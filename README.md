@@ -2,7 +2,7 @@
   <img src="assets/branding/pageguide-gemini-logo.png" alt="PageGuide Gemini" width="120">
 </p>
 
-# PageGuide Gemini
+<h1 align="center">PageGuide Gemini</h1>
 
 A Chrome extension for Gemini in Chrome. When you click a citation link in a Gemini answer, it switches to the tab you already have open for that page instead of opening a duplicate, then scrolls to and highlights the cited text.
 
