@@ -17,12 +17,23 @@ Click a citation in the Gemini panel (right) and the evidence is highlighted on 
 
 Gemini needs to format its citations in a way the extension can read. The format is in [`GEMINI_SKILL.md`](GEMINI_SKILL.md).
 
-1. Open Gemini in Chrome and click the **+** button in the prompt box ("Open the skill repo").
+1. Open Gemini in Chrome and click the **+** button in the prompt box.
 
    ![Open the skill repo](docs/open-skill-repo.png)
 
-2. Add the contents of `GEMINI_SKILL.md` as a skill.
-3. Type `/` in the prompt box to select the skill when you ask a question about a page.
+2. Click **Skills**.
+
+   ![Skills menu](docs/step-skills-menu.png)
+
+3. Click **Manage skills**.
+
+   ![Manage skills](docs/step-manage-skills.png)
+
+4. On the **Your skills** page, click **Add**, name the skill `Highlight`, and paste the contents of `GEMINI_SKILL.md`.
+
+   ![Your skills page](docs/step-your-skills.png)
+
+5. When you ask a question about a page, click **+**, then **Skills**, then **Highlight** (or type `/` in the prompt box) to use the skill.
 
 ## Use it
 
