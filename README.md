@@ -29,11 +29,15 @@ Gemini needs to format its citations in a way the extension can read. The format
 
    ![Manage skills](docs/step-manage-skills.png)
 
-4. On the **Your skills** page, click **Add**, name the skill `Highlight`, and paste the contents of `GEMINI_SKILL.md`.
+4. On the **Your skills** page, click **Add**.
 
    ![Your skills page](docs/step-your-skills.png)
 
-5. When you ask a question about a page, click **+**, then **Skills**, then **Highlight** (or type `/` in the prompt box) to use the skill.
+5. In the **Add skill** form, enter `Highlight` as the **Name**, paste the contents of `GEMINI_SKILL.md` into **Instructions**, and click **Save**.
+
+   ![Add skill form](docs/step-add-skill.png)
+
+6. When you ask a question about a page, click **+**, then **Skills**, then **Highlight** (or type `/` in the prompt box) to use the skill.
 
 ## Use it
 
