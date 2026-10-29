@@ -218,7 +218,8 @@
     annotation = null;
   }
 
-  function annotate(range, citeId) {
+  // source: a Range (text evidence) or a function returning {r, first} rects (visual evidence)
+  function annotate(source, citeId, label = '') {
     clearAnnotation();
     const color = getColorForId(citeId).border;
     const NS = 'http://www.w3.org/2000/svg';
@@ -259,7 +260,7 @@
 
     const sign = document.createElement('div');
     sign.className = 'pg-sign';
-    sign.append(`Evidence ${citeId}`);
+    sign.append(label ? `Evidence ${citeId}: ${label}` : `Evidence ${citeId}`);
     const close = document.createElement('b');
     close.textContent = '\u00d7';
     close.addEventListener('click', clearAnnotation);
@@ -269,10 +270,18 @@
     document.documentElement.appendChild(root);
 
     const place = () => {
-      const rects = range.getClientRects();
-      const r = range.getBoundingClientRect();
-      if (!rects.length || (!r.width && !r.height)) return;
-      const first = rects[0];
+      let r, first;
+      if (typeof source === 'function') {
+        const m = source();
+        if (!m) return;
+        ({ r, first } = m);
+        box.style.background = 'color-mix(in srgb, var(--pg-c) 14%, transparent)';
+      } else {
+        const rects = source.getClientRects();
+        r = source.getBoundingClientRect();
+        if (!rects.length || (!r.width && !r.height)) return;
+        first = rects[0];
+      }
       const pad = 4;
       Object.assign(box.style, { left: r.left - pad + 'px', top: r.top - pad + 'px', width: r.width + pad * 2 + 'px', height: r.height + pad * 2 + 'px' });
 
@@ -289,7 +298,7 @@
       } else {
         // no room on the left: arrow comes from above, pointing down
         arrow.style.left = first.left + first.width / 2 - aw / 2 + 'px';
-        arrow.style.top = first.top - aw - 6 + 'px';
+        arrow.style.top = Math.max(4, first.top - aw - 6) + 'px';
         arrow.style.transform = 'rotate(90deg)';
         arrow.style.animation = 'pg-bob-d 0.9s ease-in-out infinite';
         sign.style.left = Math.max(8, first.left) + 'px';
@@ -307,10 +316,92 @@
     annotation = state;
   }
 
+
+  // ---- Visual evidence: boxes on images, canvases, maps, charts, video ----
+  // Link form: #pg-box=ymin,xmin,ymax,xmax&img=hint&label=text  (0-1000, Gemini's box format)
+  const VISUAL_SELECTOR = 'img, canvas, video, svg, picture, [role="img"], .leaflet-container, .gm-style, .mapboxgl-map, [class*="map" i], [aria-label*="map" i]';
+
+  function findVisuals() {
+    const out = [];
+    (function walk(root) {
+      for (const el of root.querySelectorAll('*')) {
+        if (el.shadowRoot) walk(el.shadowRoot);
+      }
+      for (const el of root.querySelectorAll(VISUAL_SELECTOR)) out.push(el);
+    })(document);
+    return out.filter(el => el.id !== 'pg-annot-root' && !el.closest('#pg-annot-root') && !isHidden(el));
+  }
+
+  function visibleArea(rect) {
+    const w = Math.min(rect.right, innerWidth) - Math.max(rect.left, 0);
+    const h = Math.min(rect.bottom, innerHeight) - Math.max(rect.top, 0);
+    return Math.max(0, w) * Math.max(0, h);
+  }
+
+  function pickVisual(hint) {
+    const h = (hint || '').toLowerCase();
+    let best = null, bestScore = 0;
+    for (const el of findVisuals()) {
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 40 || rect.height < 40) continue;
+      const hay = [el.getAttribute('alt'), el.getAttribute('src'), el.getAttribute('aria-label'), el.getAttribute('title'), el.id, typeof el.className === 'string' ? el.className : '']
+        .join(' ').toLowerCase();
+      let score = visibleArea(rect) + rect.width * rect.height * 0.001;
+      if (h && hay.includes(h)) score += 1e9;       // named by Gemini: strongest signal
+      if (score > bestScore) { bestScore = score; best = el; }
+    }
+    return best;
+  }
+
+  // Rendered content rectangle (accounts for object-fit letterboxing on img/video)
+  function contentRect(el) {
+    const rect = el.getBoundingClientRect();
+    const nw = el.naturalWidth || el.videoWidth, nh = el.naturalHeight || el.videoHeight;
+    const fit = getComputedStyle(el).objectFit;
+    if (!nw || !nh || !(fit === 'contain' || fit === 'scale-down')) return rect;
+    const scale = Math.min(rect.width / nw, rect.height / nh);
+    const w = nw * scale, h = nh * scale;
+    return { left: rect.left + (rect.width - w) / 2, top: rect.top + (rect.height - h) / 2, width: w, height: h };
+  }
+
+  function parseBoxLink(href) {
+    const m = href.match(/pg-box=([\d.\s,]+)/i);
+    if (!m) return null;
+    const n = m[1].split(',').map(Number);
+    if (n.length !== 4 || n.some(isNaN)) return null;
+    const [y1, x1, y2, x2] = n;
+    const get = (k) => { const v = href.match(new RegExp('[#&]' + k + '=([^&]*)', 'i')); return v ? v[1].trim() : ''; };
+    return { y1, x1, y2, x2, img: get('img'), label: get('label') };
+  }
+
+  function jumpToBox(citeId, spec) {
+    if (window.CSS && CSS.highlights) CSS.highlights.delete('pg-evidence');  // drop any earlier text highlight
+    const el = pickVisual(spec.img);
+    const clamp = (v) => Math.min(1000, Math.max(0, v)) / 1000;
+    const measure = () => {
+      const cr = el ? contentRect(el) : { left: 0, top: 0, width: innerWidth, height: innerHeight };
+      const left = cr.left + clamp(Math.min(spec.x1, spec.x2)) * cr.width;
+      const top = cr.top + clamp(Math.min(spec.y1, spec.y2)) * cr.height;
+      const right = cr.left + clamp(Math.max(spec.x1, spec.x2)) * cr.width;
+      const bottom = cr.top + clamp(Math.max(spec.y1, spec.y2)) * cr.height;
+      const r = { left, top, right, bottom, width: right - left, height: bottom - top };
+      return { r, first: r };
+    };
+    if (el) {
+      el.scrollIntoView({ block: 'center', inline: 'center' });
+      const { r } = measure();
+      const dy = r.top + r.height / 2 - innerHeight / 2;
+      if (Math.abs(dy) > 40) window.scrollBy(0, dy);   // centre the box itself when the image is taller than the screen
+    }
+    annotate(measure, citeId, spec.label);
+  }
+
   chrome.runtime.onMessage.addListener((message) => {
     if (message.type === 'EXECUTE_JUMP_AND_HIGHLIGHT') {
-      const { citeId, quote } = message.payload;
-      jumpToEvidence(citeId, quote);
+      const { citeId, quote, box } = message.payload;
+      const spec = box && parseBoxLink(box);
+      if (spec) jumpToBox(citeId, spec);
+      else jumpToEvidence(citeId, quote);
     }
   });
 
@@ -325,7 +416,7 @@
     let decodedHref = href; try { decodedHref = decodeURIComponent(href); } catch (e) {}
     // PDFs: let Chrome open the link natively so its viewer highlights; background dedupes the tab
     if (/\.pdf($|[?#])|arxiv\.org\/pdf\//i.test(href)) return;
-    if (decodedHref.includes(':~:text=')) {
+    if (decodedHref.includes(':~:text=') || /pg-box=/i.test(decodedHref)) {
       // STOP browser from opening new tab
       e.preventDefault();
       e.stopPropagation();
@@ -333,14 +424,15 @@
 
       const matchId = (link.textContent || '').match(/\d+/);
       const citeId = matchId ? matchId[0] : '1';
-      const targetText = decodedHref.split(':~:text=')[1].split('&')[0];
+      const targetText = decodedHref.includes(':~:text=') ? decodedHref.split(':~:text=')[1].split('&')[0] : '';
 
       chrome.runtime.sendMessage({
         type: 'NAVIGATE_OR_FOCUS_TAB',
         payload: {
           targetUrl: href,
           citeId: citeId,
-          quote: targetText
+          quote: targetText,
+          box: /pg-box=/i.test(decodedHref) ? decodedHref : ''
         }
       });
     }

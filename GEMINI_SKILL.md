@@ -23,9 +23,21 @@ Navigation and browsing tasks (for example "go to Amazon and find me a banana"):
 - Do not turn product names or titles into links. The only links are the numbered citations.
 - If you could not see a fact on the page, do not cite it.
 
+Visual evidence (objects in an image, photo, chart, diagram, map, canvas, or video frame):
+Text quotes cannot point at things that are not text. For these, use a box link instead:
+`[N](<CURRENT_PAGE_URL>#pg-box=<YMIN>,<XMIN>,<YMAX>,<XMAX>&img=<HINT>&label=<SHORT_EXPLANATION>)`
+- The four numbers are integers from 0 to 1000, in the order ymin, xmin, ymax, xmax (y first), measured inside the image, map, or chart itself and not inside the whole page. 0,0 is its top-left corner and 1000,1000 its bottom-right.
+- Draw the box tight around the object you mean.
+- HINT helps find the right picture when the page has several: use a word from its alt text or file name, or "map" or "chart". Leave out `&img=...` if you are unsure.
+- SHORT_EXPLANATION is at most 6 words saying what the box shows. Use only letters and numbers, with %20 for spaces.
+- Use the box link, not a text link, whenever the evidence is something you see rather than something written.
+
 Examples:
 Text on page: "Computer use agents (CUAs) today are primarily deployed as single serial agents."
 Output: [1](https://arxiv.org/html/2401.xxxxx#:~:text=Computer%20use%20agents,single%20serial%20agents)
 
 Text on page (a card title): "Name That LLM"
 Output: [2](https://www.kaggle.com/competitions#:~:text=Name%20That%20LLM)
+
+Visual evidence on a map: the Eiffel Tower marked on a map image
+Output: [3](https://example.com/paris-guide#pg-box=410,520,470,575&img=map&label=Eiffel%20Tower%20location)

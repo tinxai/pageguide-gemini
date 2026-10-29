@@ -28,15 +28,22 @@ const isPdfUrl = (u) => /\.pdf($|[?#])|arxiv\.org\/pdf\//i.test(u || '');
 
 // Chrome's PDF viewer blocks extension scripts but understands #:~:text= natively,
 // so for PDFs hand the full URL to the existing tab and let Chrome highlight.
-function showEvidence(tab, fullUrl, citeId, quote) {
+function showEvidence(tab, fullUrl, citeId, quote, box) {
   if (isPdfUrl(tab.url)) {
     chrome.tabs.update(tab.id, { url: fullUrl }, () => {
       void chrome.runtime.lastError;
       setTimeout(() => chrome.tabs.reload(tab.id, () => void chrome.runtime.lastError), 250);
     });
   } else {
-    sendHighlight(tab.id, { citeId, quote });
+    sendHighlight(tab.id, { citeId, quote, box });
   }
+}
+
+// Visual evidence link: #pg-box=ymin,xmin,ymax,xmax&img=hint&label=text (returns the decoded URL or '')
+function parseBoxLink(url) {
+  let u = url || '';
+  try { u = decodeURIComponent(u); } catch (e) {}
+  return /pg-box=/i.test(u) ? u : '';
 }
 
 function parseTextFragment(url) {
@@ -52,7 +59,7 @@ function parseTextFragment(url) {
 // the link in a new tab, close it and reuse the tab that already has the page.
 chrome.tabs.onCreated.addListener((newTab) => {
   const url = newTab.pendingUrl || newTab.url;
-  if (!url || !/^(https?|file):/.test(url) || !/:~:text=|%3A~%3Atext=/i.test(url)) return;
+  if (!url || !/^(https?|file):/.test(url) || !/:~:text=|%3A~%3Atext=|pg-box=|pg-box%3D/i.test(url)) return;
   const clean = normalizeUrl(url);
   chrome.tabs.query({}, (tabs) => {
     const existing = tabs.find(t => t.id !== newTab.id && t.url && normalizeUrl(t.url) === clean);
@@ -70,7 +77,7 @@ chrome.tabs.onCreated.addListener((newTab) => {
       void chrome.runtime.lastError;
       chrome.tabs.update(existing.id, { active: true }, () => {
         chrome.windows.update(existing.windowId, { focused: true });
-        showEvidence(existing, url, '1', parseTextFragment(url));
+        showEvidence(existing, url, '1', parseTextFragment(url), parseBoxLink(url));
       });
     });
   });
@@ -78,7 +85,7 @@ chrome.tabs.onCreated.addListener((newTab) => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'NAVIGATE_OR_FOCUS_TAB') {
-    const { targetUrl, citeId, quote } = message.payload;
+    const { targetUrl, citeId, quote, box } = message.payload;
     const cleanTarget = normalizeUrl(targetUrl);
 
     chrome.tabs.query({}, (tabs) => {
@@ -96,7 +103,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Switch to the existing tab without opening a new tab
         chrome.tabs.update(targetTab.id, { active: true }, () => {
           chrome.windows.update(targetTab.windowId, { focused: true }, () => {
-            showEvidence(targetTab, targetUrl, citeId, quote);
+            showEvidence(targetTab, targetUrl, citeId, quote, box);
           });
         });
       } else {
@@ -106,7 +113,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             if (tabId === newTab.id && info.status === 'complete') {
               chrome.tabs.onUpdated.removeListener(listener);
               setTimeout(() => {
-                sendHighlight(newTab.id, { citeId, quote });
+                sendHighlight(newTab.id, { citeId, quote, box });
               }, 600);
             }
           };

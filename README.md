@@ -50,6 +50,10 @@ Gemini needs to format its citations in a way the extension can read. The format
 3. Click a citation like `[1]` in the answer.
 4. The extension jumps to your open tab and highlights the quoted text.
 
+## Visual evidence
+
+For things that aren't text (an object in a photo, a spot on a map, a region of a chart), the skill makes Gemini give a box instead of a quote. The extension finds the image, map, or canvas on the page, scrolls to it, and draws the box, arrow, and a short label over it. This works best for images and charts. On maps and canvases the box is only right if you haven't panned or zoomed since Gemini looked.
+
 ## Notes
 
 - **Webpages:** the extension highlights the quote itself; clicking another citation replaces the previous highlight. It also draws a pulsing box, a bobbing arrow and an "Evidence N" sign on the quote, which fade out after a few seconds.
