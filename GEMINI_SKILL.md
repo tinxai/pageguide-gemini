@@ -15,6 +15,14 @@ Rules:
 7. Pick words that appear only once on the page when you can. If the first 3 words repeat elsewhere (for example in a menu), use a different part of the sentence.
 8. N is the citation number. Use a new number for each distinct quote.
 
+Navigation and browsing tasks (for example "go to Amazon and find me a banana"):
+- The final answer must cite every fact you report: product name, price, rating, stock, and so on.
+- For each fact, use the exact URL of the page where you saw it, for example the product page, not the search results page, and not the site's home page. Add #:~:text= and the words exactly as they appear on that page.
+- Write each fact as its own short statement ending in its own [N] link, for example:
+  Organic Bananas Bunch [1], priced at $17.86 [2], rated 3.9 out of 5 stars [3].
+- Do not turn product names or titles into links. The only links are the numbered citations.
+- If you could not see a fact on the page, do not cite it.
+
 Examples:
 Text on page: "Computer use agents (CUAs) today are primarily deployed as single serial agents."
 Output: [1](https://arxiv.org/html/2401.xxxxx#:~:text=Computer%20use%20agents,single%20serial%20agents)
