@@ -153,6 +153,107 @@
     }
     const el = range.startContainer.parentElement;
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    annotate(range, citeId);
+  }
+
+  // ---- Big arrow + sign annotation (click-through overlay that removes itself) ----
+  let annotation = null;
+
+  function clearAnnotation() {
+    if (!annotation) return;
+    cancelAnimationFrame(annotation.raf);
+    clearTimeout(annotation.timer);
+    annotation.root.remove();
+    annotation = null;
+  }
+
+  function annotate(range, citeId) {
+    clearAnnotation();
+    const color = getColorForId(citeId).border;
+    const NS = 'http://www.w3.org/2000/svg';
+
+    if (!document.getElementById('pg-annot-style')) {
+      const st = document.createElement('style');
+      st.id = 'pg-annot-style';
+      st.textContent = `
+        @keyframes pg-pulse { 0%,100% { box-shadow: 0 0 0 0 var(--pg-c); } 50% { box-shadow: 0 0 0 9px transparent; } }
+        @keyframes pg-bob-r { 0%,100% { translate: 0 0; } 50% { translate: -10px 0; } }
+        @keyframes pg-bob-d { 0%,100% { translate: 0 0; } 50% { translate: 0 -10px; } }
+        #pg-annot-root { position: fixed; inset: 0; z-index: 2147483647; pointer-events: none; transition: opacity .5s; }
+        #pg-annot-root .pg-box { position: fixed; border: 3px solid var(--pg-c); border-radius: 6px; animation: pg-pulse 1.1s ease-in-out infinite; }
+        #pg-annot-root .pg-arrow { position: fixed; width: 90px; height: 56px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.45)); }
+        #pg-annot-root .pg-sign { position: fixed; max-width: 260px; padding: 6px 12px; border-radius: 8px; background: var(--pg-c); color: #fff;
+          font: 700 14px/1.3 -apple-system, system-ui, sans-serif; border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.4); pointer-events: auto; }
+        #pg-annot-root .pg-sign b { cursor: pointer; margin-left: 8px; opacity: .8; }`;
+      document.head.appendChild(st);
+    }
+
+    const root = document.createElement('div');
+    root.id = 'pg-annot-root';
+    root.style.setProperty('--pg-c', color);
+
+    const box = document.createElement('div');
+    box.className = 'pg-box';
+
+    const arrow = document.createElementNS(NS, 'svg');
+    arrow.setAttribute('class', 'pg-arrow');
+    arrow.setAttribute('viewBox', '0 0 90 56');
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', 'M2 20 H52 V4 L88 28 L52 52 V36 H2 Z');  // block arrow pointing right
+    path.setAttribute('fill', color);
+    path.setAttribute('stroke', '#fff');
+    path.setAttribute('stroke-width', '3');
+    path.setAttribute('stroke-linejoin', 'round');
+    arrow.appendChild(path);
+
+    const sign = document.createElement('div');
+    sign.className = 'pg-sign';
+    sign.append(`Evidence ${citeId}`);
+    const close = document.createElement('b');
+    close.textContent = '\u00d7';
+    close.addEventListener('click', clearAnnotation);
+    sign.appendChild(close);
+
+    root.append(box, arrow, sign);
+    document.documentElement.appendChild(root);
+
+    const place = () => {
+      const rects = range.getClientRects();
+      const r = range.getBoundingClientRect();
+      if (!rects.length || (!r.width && !r.height)) return;
+      const first = rects[0];
+      const pad = 4;
+      Object.assign(box.style, { left: r.left - pad + 'px', top: r.top - pad + 'px', width: r.width + pad * 2 + 'px', height: r.height + pad * 2 + 'px' });
+
+      const aw = 90, ah = 56;
+      const midY = first.top + first.height / 2;
+      if (first.left > aw + 20) {
+        // arrow comes from the left, pointing right at the first line
+        arrow.style.transform = '';
+        arrow.style.left = first.left - aw - 8 + 'px';
+        arrow.style.top = midY - ah / 2 + 'px';
+        arrow.style.animation = 'pg-bob-r 0.9s ease-in-out infinite';
+        sign.style.left = Math.max(8, first.left - aw - 8) + 'px';
+        sign.style.top = Math.max(8, midY - ah / 2 - 44) + 'px';
+      } else {
+        // no room on the left: arrow comes from above, pointing down
+        arrow.style.left = first.left + first.width / 2 - aw / 2 + 'px';
+        arrow.style.top = first.top - aw - 6 + 'px';
+        arrow.style.transform = 'rotate(90deg)';
+        arrow.style.animation = 'pg-bob-d 0.9s ease-in-out infinite';
+        sign.style.left = Math.max(8, first.left) + 'px';
+        sign.style.top = Math.max(8, first.top - aw - 52) + 'px';
+      }
+    };
+
+    const state = { root, raf: 0, timer: 0 };
+    const tick = () => { place(); state.raf = requestAnimationFrame(tick); };  // follow the text while it scrolls
+    state.raf = requestAnimationFrame(tick);
+    state.timer = setTimeout(() => {
+      root.style.opacity = '0';
+      state.timer = setTimeout(clearAnnotation, 600);
+    }, 7000);
+    annotation = state;
   }
 
   chrome.runtime.onMessage.addListener((message) => {

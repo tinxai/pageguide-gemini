@@ -48,6 +48,6 @@ Gemini needs to format its citations in a way the extension can read. The format
 
 ## Notes
 
-- **Webpages:** the extension highlights the quote itself, and highlights from earlier citations stay visible.
+- **Webpages:** the extension highlights the quote itself, and highlights from earlier citations stay visible. It also draws a pulsing box, a bobbing arrow and an "Evidence N" sign on the quote, which fade out after a few seconds.
 - **PDFs:** Chrome's PDF viewer blocks extension scripts, so Chrome highlights the quote itself. Each click opens the PDF fresh and closes the old tab, so only the latest quote is highlighted.
 - If a quote isn't highlighted, the words in the citation probably don't match the page text exactly. Pages where text is drawn as an image can't be highlighted.

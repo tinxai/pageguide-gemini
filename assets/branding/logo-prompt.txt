@@ -1,0 +1,5 @@
+Generated with the built-in image_gen tool.
+
+Use case: logo-brand
+Asset type: Primary logo symbol for PageGuide Gemini, a Chrome extension that takes readers from a citation to highlighted evidence on the source webpage.
+Primary request: Design one polished, distinctive, minimal logo symbol combining a folded-corner document page and a highlighted text line, with a small directional cue integrated into the highlight to suggest jumping straight to evidence. Bold simple geometry, balanced negative space, crisp vector-like flat edges, professionally restrained and recognizable at browser toolbar size. A compact rounded-square silhouette, deep ink blue document and vivid warm yellow highlight. The highlight is the main memorable feature. Transparent background outside the mark. Centered square composition with modest padding. Symbol only, no text, no lettering, no extra logos, no mockup, no decorative stars, no shadows, no gradients, no 3D. Produce a single finished logo, not a sheet of options.
