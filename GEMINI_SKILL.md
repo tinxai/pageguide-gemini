@@ -31,6 +31,7 @@ Text quotes cannot point at things that are not text. For these, use a box link 
 - HINT helps find the right picture when the page has several: use a word from its alt text or file name, or "map" or "chart". Leave out `&img=...` if you are unsure.
 - SHORT_EXPLANATION is at most 6 words saying what the box shows. Use only letters and numbers, with %20 for spaces.
 - Use the box link, not a text link, whenever the evidence is something you see rather than something written.
+- Text AND picture: if the thing you cite is both written on the page and drawn on an image or map (for example a parking lot named in a sidebar and also shown on a map), you must give both in ONE link, with the text first: `[N](<CURRENT_PAGE_URL>#:~:text=<WORDS>&pg-box=<YMIN>,<XMIN>,<YMAX>,<XMAX>&img=map&label=<SHORT_EXPLANATION>)`. Never give only the text part when the thing is also visible on a map or image.
 
 Examples:
 Text on page: "Computer use agents (CUAs) today are primarily deployed as single serial agents."
@@ -41,3 +42,6 @@ Output: [2](https://www.kaggle.com/competitions#:~:text=Name%20That%20LLM)
 
 Visual evidence on a map: the Eiffel Tower marked on a map image
 Output: [3](https://example.com/paris-guide#pg-box=410,520,470,575&img=map&label=Eiffel%20Tower%20location)
+
+Named on the page and shown on a map: the Broun Lot
+Output: [4](https://example.com/campus-map#:~:text=Broun%20Lot&pg-box=480,300,540,380&img=map&label=Broun%20Lot%20parking)

@@ -374,8 +374,8 @@
     return { y1, x1, y2, x2, img: get('img'), label: get('label') };
   }
 
-  function jumpToBox(citeId, spec) {
-    if (window.CSS && CSS.highlights) CSS.highlights.delete('pg-evidence');  // drop any earlier text highlight
+  function jumpToBox(citeId, spec, keepText = false) {
+    if (!keepText && window.CSS && CSS.highlights) CSS.highlights.delete('pg-evidence');  // drop any earlier text highlight
     const el = pickVisual(spec.img);
     const clamp = (v) => Math.min(1000, Math.max(0, v)) / 1000;
     const measure = () => {
@@ -400,8 +400,10 @@
     if (message.type === 'EXECUTE_JUMP_AND_HIGHLIGHT') {
       const { citeId, quote, box } = message.payload;
       const spec = box && parseBoxLink(box);
-      if (spec) jumpToBox(citeId, spec);
-      else jumpToEvidence(citeId, quote);
+      // a link may carry both: highlight the text AND box the same thing on the map/image
+      if (quote) jumpToEvidence(citeId, quote);
+      if (spec) jumpToBox(citeId, spec, !!quote);
+      else if (!quote) jumpToEvidence(citeId, quote);
     }
   });
 
