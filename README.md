@@ -1,0 +1,34 @@
+# PageGuide Gemini
+
+A Chrome extension for Gemini in Chrome. When you click a citation link in a Gemini answer, it switches to the tab you already have open for that page instead of opening a duplicate, then scrolls to and highlights the cited text.
+
+## Install the extension
+
+1. Clone or download this repo.
+2. Open `chrome://extensions` and turn on **Developer mode**.
+3. Click **Load unpacked** and select this folder.
+4. Reload any tabs you want highlighted, including the Gemini tab.
+
+## Add the skill to Gemini
+
+Gemini needs to format its citations in a way the extension can read. The format is in [`GEMINI_SKILL.md`](GEMINI_SKILL.md).
+
+1. Open Gemini in Chrome and click the **+** button in the prompt box ("Open the skill repo").
+
+   ![Open the skill repo](docs/open-skill-repo.png)
+
+2. Add the contents of `GEMINI_SKILL.md` as a skill.
+3. Type `/` in the prompt box to select the skill when you ask a question about a page.
+
+## Use it
+
+1. Open the page or paper you want to read (for example an arXiv paper) in a tab.
+2. Share that tab with Gemini and ask a question with the skill enabled.
+3. Click a citation like `[1]` in the answer.
+4. The extension jumps to your open tab and highlights the quoted text.
+
+## Notes
+
+- **Webpages:** the extension highlights the quote itself, and highlights from earlier citations stay visible.
+- **PDFs:** Chrome's PDF viewer blocks extension scripts, so Chrome highlights the quote itself. Each click opens the PDF fresh and closes the old tab, so only the latest quote is highlighted.
+- If a quote isn't highlighted, the words in the citation probably don't match the page text exactly. Pages where text is drawn as an image can't be highlighted.
