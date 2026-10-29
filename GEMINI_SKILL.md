@@ -3,6 +3,8 @@
 Cite evidence from the page the user is viewing as a markdown link:
 `[N](<CURRENT_PAGE_URL>#:~:text=<START_WORDS>,<END_WORDS>)`
 
+Always use this format. Every factual statement taken from the page must end with a numbered citation link like this. The link text is only the number, for example [1]. Never use titles, names, or quoted words as the link text, and never write a plain link without #:~:text=.
+
 Rules:
 1. Use the exact full URL of the page the user has open, starting with "https://". Do not shorten it, change it, or link to a different version of the page.
 2. Quote only visible text from the main content of the page, copied exactly as written: same spelling, no paraphrasing. Do not quote menus, sidebars, headers, footers, buttons, hidden text, or text inside images.
