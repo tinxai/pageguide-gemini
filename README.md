@@ -54,6 +54,20 @@ Gemini needs to format its citations in a way the extension can read. The format
 
 For things that aren't text (an object in a photo, a spot on a map, a region of a chart), the skill makes Gemini give a box instead of a quote. The extension finds the image, map, or canvas on the page, scrolls to it, and draws the box, arrow, and a short label over it. This works best for images and charts. On maps and canvases the box is only right if you haven't panned or zoomed since Gemini looked.
 
+## Use cases
+
+### 1. Find evidence on the page you are reading
+
+Ask Gemini a question about the page you have open. Each statement in its answer ends with a numbered citation. Click it and the extension scrolls to the exact text, highlights it, and points an arrow at it with an "Evidence N" sign. It works on long posts and articles, and on pages built with shadow DOM, such as social feeds. Here, a citation on an X post jumps to the sentence it came from.
+
+![Find evidence: a citation highlights the cited sentence in an X post](docs/usecase-find-evidence.png)
+
+### 2. Navigate, then draw on an image
+
+Give Gemini a browsing task, such as "scroll down and find the photo of Harry Kane and tell me what he is wearing". Gemini navigates to the picture, and its answer cites what it saw with a box. Click the citation and the extension draws a bounding box, an arrow, and a short label directly on the image. This also works for maps, charts, and video frames, not only text.
+
+![Navigate and draw: a citation draws a labelled box on the photo](docs/usecase-navigate-image.png)
+
 ## Notes
 
 - **Webpages:** the extension highlights the quote itself; clicking another citation replaces the previous highlight. It also draws a pulsing box, a bobbing arrow and an "Evidence N" sign on the quote, which fade out after a few seconds.
