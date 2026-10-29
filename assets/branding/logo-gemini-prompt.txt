@@ -1,0 +1,9 @@
+Generated with the built-in image_gen tool.
+Design reference: https://pageguide.github.io/
+
+Use case: logo-brand
+Asset type: Finished primary logo symbol for PageGuide Gemini, for a Chrome extension and research project.
+Primary request: Create a beautiful, sophisticated logo combining PageGuide's identity (a webpage, highlighting evidence, orange accent) with Gemini's recognizable four-point concave sparkle and blue-to-violet color language. A single coherent custom-designed symbol, with exceptional curves, optical balance and generous negative space.
+Design direction: an elegant softly rounded page/bookmark ribbon subtly forming a capital P, with a four-point Gemini-style sparkle precisely integrated into its upper-right opening. The page ribbon uses a rich luminous blue to periwinkle to violet gradient. One short warm tangerine-orange highlight stroke sits within the lower part of the page, evoking highlighted evidence and PageGuide's orange identity. Let the sparkle be visually prominent and beautifully proportioned, with concave curved sides and four tapered tips. Combine the page and sparkle into a memorable unified silhouette rather than unrelated icons pasted together. Restrained, contemporary, premium software brand design.
+Composition: one large centered icon on a square transparent canvas, about 75 percent of canvas width, balanced padding. Crisp vector-like geometry, smooth controlled gradients contained inside the shapes, no texture.
+Constraints: genuine transparent background; symbol only; no words, no typography, no labels, no letters other than the implied P geometry; no mockup, no presentation board, no extra variations; no drop shadows, no 3D, no bevels, no outer glow, no tiny decorative stars. High craft and simplicity; recognizable at small browser-icon sizes. This is a new design replacing the earlier blue document and yellow arrow concept.

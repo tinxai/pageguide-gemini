@@ -80,28 +80,58 @@
     return matchedSpans;
   }
 
-  function collectText() {
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
-      acceptNode: (n) => {
-        const p = n.parentElement;
-        if (!p || ['SCRIPT', 'STYLE', 'NOSCRIPT'].includes(p.tagName)) return NodeFilter.FILTER_REJECT;
-        return NodeFilter.FILTER_ACCEPT;
-      }
-    });
-    const nodes = []; let text = ''; let n;
-    while ((n = walker.nextNode())) { nodes.push({ node: n, start: text.length }); text += n.textContent + ' '; }
-    return { nodes, text };
+  // ---- DOM reading (modelled on PageGuide's page index) ----
+  // Only visible text, open shadow roots included, our own overlay excluded.
+  const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'SVG', 'CANVAS', 'IFRAME', 'TEXTAREA', 'INPUT', 'SELECT']);
+  const LANDMARK = 'nav, header, footer, aside, [role="navigation"], [role="banner"], [role="contentinfo"], [role="complementary"], [role="search"]';
+
+  function isHidden(el) {
+    if (el.hidden || el.getAttribute('aria-hidden') === 'true') return true;
+    if (typeof el.checkVisibility === 'function') {
+      return !el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
+    }
+    const st = getComputedStyle(el);
+    return st.display === 'none' || st.visibility === 'hidden' || st.opacity === '0';
   }
 
-  // Build a letters/numbers-only lowercase string plus a map back to (node, offset),
+  // Nearest block-level ancestor, used to keep a quote inside one paragraph/card/list item.
+  function blockOf(node) {
+    let el = node.parentElement;
+    while (el) {
+      const d = getComputedStyle(el).display;
+      if (!d.startsWith('inline') && d !== 'contents') return el;
+      el = el.parentElement || (el.getRootNode() instanceof ShadowRoot ? el.getRootNode().host : null);
+    }
+    return document.body;
+  }
+
+  function collectText() {
+    const nodes = [];
+    (function walk(root) {
+      for (const child of root.childNodes) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          if (child.textContent.trim()) nodes.push(child);
+        } else if (child.nodeType === Node.ELEMENT_NODE) {
+          if (SKIP_TAGS.has(child.tagName.toUpperCase()) || child.id === 'pg-annot-root') continue;
+          if (isHidden(child)) continue;
+          if (child.shadowRoot) walk(child.shadowRoot);
+          walk(child);
+        }
+      }
+    })(document.body);
+    return nodes;
+  }
+
+  // Letters/numbers-only lowercase string plus a map back to (node, offset, block, inLandmark),
   // so punctuation, whitespace and quote-style differences never break a match.
   function buildIndex() {
-    const { nodes } = collectText();
     let flat = ''; const map = [];
-    for (const { node } of nodes) {
+    for (const node of collectText()) {
+      const block = blockOf(node);
+      const landmark = !!(node.parentElement && node.parentElement.closest(LANDMARK));
       const t = node.textContent;
       for (let i = 0; i < t.length; i++) {
-        if (/[\p{L}\p{N}]/u.test(t[i])) { flat += t[i].toLowerCase(); map.push({ node, off: i }); }
+        if (/[\p{L}\p{N}]/u.test(t[i])) { flat += t[i].toLowerCase(); map.push({ node, off: i, block, landmark }); }
       }
     }
     return { flat, map };
@@ -109,22 +139,42 @@
 
   const alnum = (s) => (s.match(/[\p{L}\p{N}]/gu) || []).join('').toLowerCase();
 
-  // quote is "start" or "start,end" (text-fragment range); matches across nodes
+  function occurrences(flat, needle) {
+    const out = [];
+    for (let i = flat.indexOf(needle); i !== -1; i = flat.indexOf(needle, i + 1)) out.push(i);
+    return out;
+  }
+
+  // quote is "start" or "start,end" (text-fragment range).
+  // A valid match keeps start and end in the same text block (one paragraph / card / list item),
+  // and prefers main content over nav, sidebars and footers.
   function buildRange(quote) {
     let q = quote; try { q = decodeURIComponent(quote); } catch (e) {}
     const parts = q.split(',').map(alnum).filter(Boolean);
     if (!parts.length) return null;
     const { flat, map } = buildIndex();
-    let s = flat.indexOf(parts[0]);
-    if (s === -1 && parts[1]) { s = flat.indexOf(parts[1]); parts.length = 1; }  // start missing: fall back to end
-    if (s === -1) { console.debug('[PageGuide] no match for', parts[0]); return null; }
-    let e = s + parts[0].length;
-    if (parts[1]) {
-      const ei = flat.indexOf(parts[1], e);
-      if (ei !== -1) e = ei + parts[1].length;
+
+    const candidates = [];
+    for (const s of occurrences(flat, parts[0])) {
+      let e = s + parts[0].length;
+      let paired = false;
+      if (parts[1]) {
+        for (const ei of occurrences(flat.slice(e), parts[1])) {
+          const end = e + ei + parts[1].length;
+          if (map[end - 1].block === map[s].block) { e = end; paired = true; break; }
+        }
+      }
+      candidates.push({ s, e, paired, landmark: map[s].landmark });
     }
+    if (!candidates.length && parts[1]) {  // start words missing: use the end words alone
+      for (const s of occurrences(flat, parts[1])) candidates.push({ s, e: s + parts[1].length, paired: false, landmark: map[s].landmark });
+    }
+    if (!candidates.length) { console.debug('[PageGuide] no match for', parts[0]); return null; }
+
+    // best: paired start/end > unpaired; main content > landmark; then document order
+    candidates.sort((x, y) => (y.paired - x.paired) || (x.landmark - y.landmark) || (x.s - y.s));
+    const { s, e } = candidates[0];
     const a = map[s], b = map[e - 1];
-    if (!a || !b) return null;
     const r = document.createRange();
     r.setStart(a.node, a.off);
     r.setEnd(b.node, b.off + 1);
@@ -140,10 +190,13 @@
     }
     const color = getColorForId(citeId);
     if (window.CSS && CSS.highlights) {
-      if (!document.getElementById('pg-hl-style')) {
+      // the ::highlight rule must live in the same tree as the text (document or shadow root)
+      const tree = range.startContainer.getRootNode();
+      const host = tree instanceof ShadowRoot ? tree : document.head;
+      if (!host.querySelector('#pg-hl-style')) {
         const st = document.createElement('style'); st.id = 'pg-hl-style';
         st.textContent = '::highlight(pg-evidence){background-color:rgba(255,224,102,.65);color:inherit}';
-        document.head.appendChild(st);
+        host.appendChild(st);
       }
       CSS.highlights.set('pg-evidence', new Highlight(range));  // replaces the previous citation's highlight
     } else {
