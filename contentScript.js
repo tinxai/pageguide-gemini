@@ -145,9 +145,7 @@
         st.textContent = '::highlight(pg-evidence){background-color:rgba(255,224,102,.65);color:inherit}';
         document.head.appendChild(st);
       }
-      let hl = CSS.highlights.get('pg-evidence');
-      if (!hl) { hl = new Highlight(); CSS.highlights.set('pg-evidence', hl); }
-      hl.add(range);  // accumulate: keep earlier citations highlighted
+      CSS.highlights.set('pg-evidence', new Highlight(range));  // replaces the previous citation's highlight
     } else {
       const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
     }
