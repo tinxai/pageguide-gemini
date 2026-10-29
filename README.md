@@ -2,6 +2,10 @@
 
 A Chrome extension for Gemini in Chrome. When you click a citation link in a Gemini answer, it switches to the tab you already have open for that page instead of opening a duplicate, then scrolls to and highlights the cited text.
 
+![Demo: clicking citation 1 in the Gemini side panel highlights the evidence on the page](docs/demo.png)
+
+Click a citation in the Gemini panel (right) and the evidence is highlighted on the page (left).
+
 ## Install the extension
 
 1. Clone or download this repo.
