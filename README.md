@@ -43,7 +43,7 @@ Gemini needs to format its citations in a way the extension can read. The format
 
    ![Add skill form](docs/step-add-skill.png)
 
-6. When you ask a question about a page, click **+**, then **Skills**, then **pg**, or type `$pg` in the prompt box.
+6. When you ask a question about a page, click **+**, then **Skills**, then **pg**, or type `/pg` in the prompt box.
 
 ## Use it
 
