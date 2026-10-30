@@ -15,6 +15,12 @@ Rules:
 7. Pick words that appear only once on the page when you can. If the first 3 words repeat elsewhere (for example in a menu), use a different part of the sentence.
 8. N is the citation number. Use a new number for each distinct quote.
 
+Google Sheets:
+- Cite spreadsheet evidence by exact A1 cell address instead of `#:~:text=`.
+- Format: `[N](<SHEET_URL_WITHOUT_HASH>#pg-cell=<A1_CELL>&label=<EXACT_CELL_VALUE>)`
+- Keep the sheet `gid` in the URL query when present. Remove any existing hash before adding `#pg-cell=`.
+- `label` must be the exact visible contents of that cell, URL-encoded. Cite each supporting cell separately.
+
 Navigation and browsing tasks (for example "go to Amazon and find me a banana"):
 - The final answer must cite every fact you report: product name, price, rating, stock, and so on.
 - For each fact, use the exact URL of the page where you saw it, for example the product page, not the search results page, and not the site's home page. Add #:~:text= and the words exactly as they appear on that page.

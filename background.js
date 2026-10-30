@@ -57,7 +57,7 @@ const isPdfUrl = (u) => /\.pdf($|[?#])|arxiv\.org\/pdf\//i.test(u || '');
 
 // Chrome's PDF viewer blocks extension scripts but understands #:~:text= natively,
 // so for PDFs hand the full URL to the existing tab and let Chrome highlight.
-function showEvidence(tab, fullUrl, citeId, quote, box) {
+function showEvidence(tab, fullUrl, citeId, quote, box, cell) {
   if (isPdfUrl(tab.url)) {
     chrome.tabs.update(tab.id, { url: fullUrl }, () => {
       void chrome.runtime.lastError;
@@ -69,12 +69,12 @@ function showEvidence(tab, fullUrl, citeId, quote, box) {
       const listener = (tabId, info) => {
         if (tabId !== tab.id || info.status !== 'complete') return;
         chrome.tabs.onUpdated.removeListener(listener);
-        setTimeout(() => sendHighlight(tab.id, { citeId, quote, box }), 350);
+        setTimeout(() => sendHighlight(tab.id, { citeId, quote, box, cell }), 350);
       };
       chrome.tabs.onUpdated.addListener(listener);
       chrome.tabs.update(tab.id, { url: workspaceView }, () => void chrome.runtime.lastError);
     } else {
-      sendHighlight(tab.id, { citeId, quote, box });
+      sendHighlight(tab.id, { citeId, quote, box, cell });
     }
   }
 }
@@ -84,6 +84,22 @@ function parseBoxLink(url) {
   let u = url || '';
   try { u = decodeURIComponent(u); } catch (e) {}
   return /pg-box=/i.test(u) ? u : '';
+}
+
+// Exact Google Sheets cell evidence: #pg-cell=C4&label=visible%20value
+function parseCellLink(url) {
+  let value = url || '';
+  if (!/[?#&]pg-cell=/i.test(value)) {
+    try { value = decodeURIComponent(value); } catch (e) {}
+  }
+  try {
+    const params = new URLSearchParams(new URL(value).hash.replace(/^#/, ''));
+    const ref = params.get('pg-cell');
+    if (!/^[A-Z]+\d+$/i.test(ref || '')) return null;
+    return { ref: ref.toUpperCase(), label: (params.get('label') || '').trim() };
+  } catch (e) {
+    return null;
+  }
 }
 
 function parseTextFragment(url) {
@@ -99,7 +115,7 @@ function parseTextFragment(url) {
 // the link in a new tab, close it and reuse the tab that already has the page.
 chrome.tabs.onCreated.addListener((newTab) => {
   const url = newTab.pendingUrl || newTab.url;
-  if (!url || !/^(https?|file):/.test(url) || !/:~:text=|%3A~%3Atext=|pg-box=|pg-box%3D/i.test(url)) return;
+  if (!url || !/^(https?|file):/.test(url) || !/:~:text=|%3A~%3Atext=|pg-box=|pg-box%3D|pg-cell=|pg-cell%3D/i.test(url)) return;
   const clean = normalizeUrl(url);
   chrome.tabs.query({}, (tabs) => {
     const existing = tabs.find(t => t.id !== newTab.id && t.url && normalizeUrl(t.url) === clean);
@@ -117,7 +133,7 @@ chrome.tabs.onCreated.addListener((newTab) => {
       void chrome.runtime.lastError;
       chrome.tabs.update(existing.id, { active: true }, () => {
         chrome.windows.update(existing.windowId, { focused: true });
-        showEvidence(existing, url, '1', parseTextFragment(url), parseBoxLink(url));
+        showEvidence(existing, url, '1', parseTextFragment(url), parseBoxLink(url), parseCellLink(url));
       });
     });
   });
@@ -125,7 +141,7 @@ chrome.tabs.onCreated.addListener((newTab) => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'NAVIGATE_OR_FOCUS_TAB') {
-    const { targetUrl, citeId, quote, box } = message.payload;
+    const { targetUrl, citeId, quote, box, cell } = message.payload;
     const cleanTarget = normalizeUrl(targetUrl);
 
     chrome.tabs.query({}, (tabs) => {
@@ -143,7 +159,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Switch to the existing tab without opening a new tab
         chrome.tabs.update(targetTab.id, { active: true }, () => {
           chrome.windows.update(targetTab.windowId, { focused: true }, () => {
-            showEvidence(targetTab, targetUrl, citeId, quote, box);
+            showEvidence(targetTab, targetUrl, citeId, quote, box, cell);
           });
         });
       } else {
@@ -153,7 +169,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             if (tabId === newTab.id && info.status === 'complete') {
               chrome.tabs.onUpdated.removeListener(listener);
               setTimeout(() => {
-                sendHighlight(newTab.id, { citeId, quote, box });
+                sendHighlight(newTab.id, { citeId, quote, box, cell });
               }, 600);
             }
           };

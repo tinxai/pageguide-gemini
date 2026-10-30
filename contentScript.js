@@ -226,6 +226,47 @@
     return true;
   }
 
+  function applyTextHighlight(range, citeId) {
+    if (window.CSS && CSS.highlights) {
+      const tree = range.startContainer.getRootNode();
+      const host = tree instanceof ShadowRoot ? tree : document.head;
+      if (!host.querySelector('#pg-hl-style')) {
+        const st = document.createElement('style'); st.id = 'pg-hl-style';
+        st.textContent = '::highlight(pg-evidence){background-color:rgba(255,224,102,.65);color:inherit}';
+        host.appendChild(st);
+      }
+      CSS.highlights.set('pg-evidence', new Highlight(range));
+    } else {
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
+    }
+    const el = range.startContainer.parentElement;
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    annotate(range, citeId);
+  }
+
+  function jumpToSheetCell(citeId, spec) {
+    if (!spec || !/\/htmlview\/sheet\/?$/i.test(location.pathname)) return false;
+    const m = String(spec.ref || '').match(/^([A-Z]+)(\d+)$/i);
+    if (!m) return false;
+    let column = 0;
+    for (const ch of m[1].toUpperCase()) column = column * 26 + ch.charCodeAt(0) - 64;
+    column -= 1;
+    const row = Number(m[2]);
+    const rowHeader = [...document.querySelectorAll('th[id*="R"]')]
+      .find(el => new RegExp(`R${row - 1}$`).test(el.id));
+    const cell = rowHeader?.parentElement?.querySelectorAll('td')[column];
+    if (!cell) { showNoEvidenceNotice(citeId); return false; }
+    const visibleLabel = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+    if (spec.label && visibleLabel(cell.textContent) !== visibleLabel(spec.label)) {
+      showNoEvidenceNotice(citeId);
+      return false;
+    }
+    const range = document.createRange();
+    range.selectNodeContents(cell);
+    applyTextHighlight(range, citeId);
+    return true;
+  }
+
   function isGoogleWorkspaceReadableView() {
     return location.hostname === 'docs.google.com' &&
       /^\/(document|spreadsheets|presentation)\/d\/[^/]+\/(mobilebasic|htmlview|htmlpresent)(?:\/|$)/i.test(location.pathname);
@@ -423,6 +464,21 @@
     return { y1, x1, y2, x2, img: get('img'), label: get('label') };
   }
 
+  function parseCellLink(href) {
+    let value = href || '';
+    if (!/[?#&]pg-cell=/i.test(value)) {
+      try { value = decodeURIComponent(value); } catch (e) {}
+    }
+    try {
+      const params = new URLSearchParams(new URL(value, location.href).hash.replace(/^#/, ''));
+      const ref = params.get('pg-cell');
+      if (!/^[A-Z]+\d+$/i.test(ref || '')) return null;
+      return { ref: ref.toUpperCase(), label: (params.get('label') || '').trim() };
+    } catch (e) {
+      return null;
+    }
+  }
+
   function jumpToBox(citeId, spec, keepText = false) {
     if (!keepText && window.CSS && CSS.highlights) CSS.highlights.delete('pg-evidence');  // drop any earlier text highlight
     const el = pickVisual(spec.img);
@@ -494,17 +550,18 @@
 
   chrome.runtime.onMessage.addListener((message) => {
     if (message.type === 'EXECUTE_JUMP_AND_HIGHLIGHT') {
-      const { citeId, quote, box } = message.payload;
+      const { citeId, quote, box, cell } = message.payload;
       // tabs.sendMessage reaches every frame. In Sheets' readable view, the
       // outer frame contains UI labels such as "Sheet1", while the nested
       // /htmlview/sheet frame contains the actual cells. Let only the content
       // frame process text so short values cannot highlight unrelated UI.
-      if (quote && isSheetsReadableViewContainer()) return;
+      if ((quote || cell) && isSheetsReadableViewContainer()) return;
       const spec = box && parseBoxLink(box);
       // a link may carry both: highlight the text AND box the same thing on the map/image
-      if (quote) jumpToEvidence(citeId, quote);
+      if (cell) jumpToSheetCell(citeId, cell);
+      else if (quote) jumpToEvidence(citeId, quote);
       if (spec) jumpToBox(citeId, spec, !!quote);
-      else if (!quote) jumpToEvidence(citeId, quote);
+      else if (!quote && !cell) jumpToEvidence(citeId, quote);
     }
   });
 
@@ -519,7 +576,7 @@
     let decodedHref = href; try { decodedHref = decodeURIComponent(href); } catch (e) {}
     // PDFs: let Chrome open the link natively so its viewer highlights; background dedupes the tab
     if (/\.pdf($|[?#])|arxiv\.org\/pdf\//i.test(href)) return;
-    if (decodedHref.includes(':~:text=') || /pg-box=/i.test(decodedHref)) {
+    if (decodedHref.includes(':~:text=') || /pg-box=|pg-cell=/i.test(decodedHref)) {
       // STOP browser from opening new tab
       e.preventDefault();
       e.stopPropagation();
@@ -535,7 +592,8 @@
           targetUrl: href,
           citeId: citeId,
           quote: targetText,
-          box: /pg-box=/i.test(decodedHref) ? decodedHref : ''
+          box: /pg-box=/i.test(decodedHref) ? decodedHref : '',
+          cell: parseCellLink(href)
         }
       });
     }
