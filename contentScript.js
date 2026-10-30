@@ -461,9 +461,20 @@
     addBackToEditorButton();
   }
 
+  function isSheetsReadableViewContainer() {
+    return window === window.top &&
+      location.hostname === 'docs.google.com' &&
+      /^\/spreadsheets\/d\/[^/]+\/htmlview\/?$/i.test(location.pathname);
+  }
+
   chrome.runtime.onMessage.addListener((message) => {
     if (message.type === 'EXECUTE_JUMP_AND_HIGHLIGHT') {
       const { citeId, quote, box } = message.payload;
+      // tabs.sendMessage reaches every frame. In Sheets' readable view, the
+      // outer frame contains UI labels such as "Sheet1", while the nested
+      // /htmlview/sheet frame contains the actual cells. Let only the content
+      // frame process text so short values cannot highlight unrelated UI.
+      if (quote && isSheetsReadableViewContainer()) return;
       const spec = box && parseBoxLink(box);
       // a link may carry both: highlight the text AND box the same thing on the map/image
       if (quote) jumpToEvidence(citeId, quote);
