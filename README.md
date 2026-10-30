@@ -1,8 +1,10 @@
 <p align="center">
-  <img src="assets/branding/pageguide-gemini-logo.png" alt="PageGuide Gemini" width="120">
+  <a href="https://pageguide.github.io"><img src="assets/branding/orange-gemini-logo.svg" alt="Orange and Gemini" width="360"></a>
 </p>
 
 <h1 align="center">PageGuide Gemini</h1>
+
+<p align="center"><strong><a href="https://pageguide.github.io">Visit the PageGuide website</a></strong></p>
 
 A Chrome extension for Gemini in Chrome. When you click a citation link in a Gemini answer, it switches to the tab you already have open for that page instead of opening a duplicate, then scrolls to and highlights the cited text.
 
@@ -37,11 +39,11 @@ Gemini needs to format its citations in a way the extension can read. The format
 
    ![Your skills page](docs/step-your-skills.png)
 
-5. In the **Add skill** form, enter `Highlight` as the **Name**, paste the contents of `GEMINI_SKILL.md` into **Instructions**, and click **Save**.
+5. In the **Add skill** form, enter `Pg` as the **Name**, paste the contents of `GEMINI_SKILL.md` into **Instructions**, and click **Save**.
 
    ![Add skill form](docs/step-add-skill.png)
 
-6. When you ask a question about a page, click **+**, then **Skills**, then **Highlight** (or type `/` in the prompt box) to use the skill.
+6. When you ask a question about a page, click **+**, then **Skills**, then **Pg**, or type `/Pg` in the prompt box.
 
 ## Use it
 
@@ -71,6 +73,7 @@ Give Gemini a browsing task, such as "scroll down and find the photo of Harry Ka
 ## Notes
 
 - **Webpages:** the extension highlights the quote itself; clicking another citation replaces the previous highlight. It also draws a pulsing box, a bobbing arrow and an "Evidence N" sign on the quote, which fade out after a few seconds.
+- **Google Docs, Sheets, and Slides:** these editors draw content on canvases instead of exposing normal webpage text. PageGuide keeps the same tab but switches it to Google's text-readable view so it can highlight the cited words.
 - **PDFs:** Chrome's PDF viewer blocks extension scripts, so Chrome highlights the quote itself. Each click opens the PDF fresh and closes the old tab, so only the latest quote is highlighted.
 - If a quote isn't highlighted, the words in the citation probably don't match the page text exactly. Pages where text is drawn as an image can't be highlighted.
 

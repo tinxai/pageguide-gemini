@@ -1,4 +1,4 @@
-### SKILL: highlight_and_cite_evidence
+### SKILL: Pg
 
 Cite evidence from the page the user is viewing as a markdown link:
 `[N](<CURRENT_PAGE_URL>#:~:text=<START_WORDS>,<END_WORDS>)`

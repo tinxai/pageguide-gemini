@@ -3,10 +3,39 @@ function normalizeUrl(url) {
   if (!url) return '';
   try {
     const u = new URL(url);
+    const workspace = u.pathname.match(/^\/(document|spreadsheets|presentation)\/d\/([^/]+)/i);
+    if (u.hostname === 'docs.google.com' && workspace) {
+      // Treat an editor URL and its text-readable view as the same open file.
+      return `docs.google.com/${workspace[1].toLowerCase()}/d/${workspace[2]}`;
+    }
     // Strip hash, query params, trailing slashes, and 'www.'
     return (u.hostname.replace(/^www\./, '') + u.pathname).replace(/\/+$/, '').toLowerCase();
   } catch (e) {
     return url.split('#')[0].split('?')[0].replace(/\/+$/, '').toLowerCase();
+  }
+}
+
+// Google Workspace editors paint document content onto canvases, so there are
+// no DOM text nodes for CSS text highlights. Their read-only views expose the
+// same content as real text. Keep using the existing tab, but switch that tab
+// to the corresponding readable view before applying the highlight.
+function googleWorkspaceViewUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.hostname !== 'docs.google.com') return '';
+    const m = u.pathname.match(/^\/(document|spreadsheets|presentation)\/d\/([^/]+)/i);
+    if (!m) return '';
+    const type = m[1].toLowerCase(), id = m[2];
+    if (type === 'document') return `https://docs.google.com/document/d/${id}/mobilebasic`;
+    if (type === 'spreadsheets') {
+      const hashGid = u.hash.match(/(?:^#|[&#])gid=([^&]+)/i);
+      const gid = u.searchParams.get('gid') || (hashGid && hashGid[1]);
+      return `https://docs.google.com/spreadsheets/d/${id}/htmlview${gid ? `?gid=${encodeURIComponent(gid)}` : ''}`;
+    }
+    const slide = u.searchParams.get('slide');
+    return `https://docs.google.com/presentation/d/${id}/htmlpresent${slide ? `?slide=${encodeURIComponent(slide)}` : ''}`;
+  } catch (e) {
+    return '';
   }
 }
 
@@ -35,7 +64,18 @@ function showEvidence(tab, fullUrl, citeId, quote, box) {
       setTimeout(() => chrome.tabs.reload(tab.id, () => void chrome.runtime.lastError), 250);
     });
   } else {
-    sendHighlight(tab.id, { citeId, quote, box });
+    const workspaceView = googleWorkspaceViewUrl(fullUrl);
+    if (workspaceView && tab.url !== workspaceView) {
+      const listener = (tabId, info) => {
+        if (tabId !== tab.id || info.status !== 'complete') return;
+        chrome.tabs.onUpdated.removeListener(listener);
+        setTimeout(() => sendHighlight(tab.id, { citeId, quote, box }), 350);
+      };
+      chrome.tabs.onUpdated.addListener(listener);
+      chrome.tabs.update(tab.id, { url: workspaceView }, () => void chrome.runtime.lastError);
+    } else {
+      sendHighlight(tab.id, { citeId, quote, box });
+    }
   }
 }
 
@@ -108,7 +148,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
       } else {
         // Only if no relevant tab exists anywhere, open target
-        chrome.tabs.create({ url: targetUrl }, (newTab) => {
+        chrome.tabs.create({ url: googleWorkspaceViewUrl(targetUrl) || targetUrl }, (newTab) => {
           const listener = (tabId, info) => {
             if (tabId === newTab.id && info.status === 'complete') {
               chrome.tabs.onUpdated.removeListener(listener);
