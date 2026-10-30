@@ -199,8 +199,12 @@
     let range = null;
     try { range = buildRange(quoteText); } catch (e) {}
     if (!range) {
-      if (window.find) window.find(String(quoteText).split(',')[0], false, false, true);
-      return;
+      if (isGoogleWorkspaceReadableView()) {
+        showNoEvidenceNotice(citeId);
+      } else if (window.find) {
+        window.find(String(quoteText).split(',')[0], false, false, true);
+      }
+      return false;
     }
     const color = getColorForId(citeId);
     if (window.CSS && CSS.highlights) {
@@ -219,6 +223,27 @@
     const el = range.startContainer.parentElement;
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     annotate(range, citeId);
+    return true;
+  }
+
+  function isGoogleWorkspaceReadableView() {
+    return location.hostname === 'docs.google.com' &&
+      /^\/(document|spreadsheets|presentation)\/d\/[^/]+\/(mobilebasic|htmlview|htmlpresent)(?:\/|$)/i.test(location.pathname);
+  }
+
+  function showNoEvidenceNotice(citeId) {
+    document.getElementById('pg-no-evidence')?.remove();
+    const notice = document.createElement('div');
+    notice.id = 'pg-no-evidence';
+    notice.textContent = `Evidence ${citeId}: exact cited text not found`;
+    Object.assign(notice.style, {
+      position: 'fixed', left: '50%', top: '18px', translate: '-50% 0',
+      zIndex: '2147483647', padding: '10px 16px', borderRadius: '9px',
+      background: '#b3261e', color: '#fff', boxShadow: '0 3px 12px rgba(0,0,0,.3)',
+      font: '700 14px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+    });
+    document.documentElement.appendChild(notice);
+    setTimeout(() => notice.remove(), 5000);
   }
 
   // ---- Big arrow + sign annotation (click-through overlay that removes itself) ----
