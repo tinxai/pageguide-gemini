@@ -11,8 +11,7 @@ Rules:
 2. Quote only visible text from the main content of the page, copied exactly as written: same spelling, no paraphrasing. Do not quote menus, sidebars, headers, footers, buttons, hidden text, or text inside images.
 3. Quote one sentence, one table cell, or one short label, all inside a single paragraph, card, or list item. Never span several paragraphs, cards, or sections.
    - For a table or spreadsheet answer, cite only the exact value cell that supports the fact. Never combine column headers, row labels, or neighboring cells into the text fragment.
-   - Example: if row `A` has `23` under `Unit`, cite `#:~:text=23`. Do not cite `Product,Cost`, `Product%20Unit%20Cost`, `A,23`, or the whole row.
-   - If the answer is `Product C`, the product-name citation must be `#:~:text=C`, not `#:~:text=Product,C` and not `#:~:text=Product%20C`. The word `Product` is a header, not evidence for the product name.
+   - For a single-cell value, the `:~:text` fragment must contain only that cell's exact visible value. Do not construct a range from a header or label to the value.
 4. START_WORDS are the first 3 words of the quote. END_WORDS are the last 3 words. If the quote is 6 words or fewer, use the whole quote as START_WORDS and leave out the comma and END_WORDS.
 5. Use only letters and numbers in the fragment. Remove punctuation. Encode each space as %20. Separate START_WORDS and END_WORDS with a single comma.
 6. Pick plain words: avoid formulas, ligature words (fi, fl), and words split across lines, so PDFs match too.

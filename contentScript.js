@@ -157,10 +157,8 @@
     const candidates = [];
     for (const s of occurrences(flat, parts[0])) {
       let e = s + parts[0].length;
-      // Never let a single flattened match spill across table cells, cards, or
-      // paragraphs. This is especially important for Google Sheets, where
-      // adjacent cells such as "Product", "Unit", and "Cost" otherwise look
-      // like one continuous string in the punctuation-insensitive index.
+      // Never let a flattened match spill across table cells, cards, or
+      // paragraphs that only appear adjacent in the text index.
       if (!map[s] || !map[e - 1] || map[e - 1].block !== map[s].block) continue;
       let paired = false;
       if (parts[1]) {
@@ -171,10 +169,9 @@
       }
       candidates.push({ s, e, paired, landmark: map[s].landmark, dataCell: map[s].block.tagName === 'TD' });
     }
-    // If a start/end range cannot be paired inside one block, prefer the end
-    // words when they exist. In Sheets, Gemini may emit "Product,C" even
-    // though Product is a header and C is the actual evidence cell; selecting
-    // the end prevents the annotation from landing on the header.
+    // If a start/end range cannot be paired inside one block, prefer a valid
+    // end match. This avoids treating a label or header as the evidence when
+    // the intended value is in a separate block or table cell.
     if (parts[1] && !candidates.some(candidate => candidate.paired)) {
       const endCandidates = [];
       for (const s of occurrences(flat, parts[1])) {
