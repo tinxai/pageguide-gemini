@@ -77,6 +77,10 @@ Give Gemini a browsing task, such as "scroll down and find the photo of Harry Ka
 - **PDFs:** Chrome's PDF viewer blocks extension scripts, so Chrome highlights the quote itself. Each click opens the PDF fresh and closes the old tab, so only the latest quote is highlighted.
 - If a quote isn't highlighted, the words in the citation probably don't match the page text exactly. Pages where text is drawn as an image can't be highlighted.
 
+## Next step: step-by-step highlighting
+
+Add an annotation mode that presents multiple evidence targets as an ordered walkthrough. PageGuide will highlight one target at a time, label it as **Step N of M**, and provide **Previous** and **Next** controls. Each step will continue to use its precise target—text, a Google Sheets A1 cell address, or a visual box—and will fail safely when that target cannot be verified.
+
 ## Author
 
 Made by [Tin Nguyen](https://github.com/tinxai). It builds on ideas from [PageGuide](https://github.com/tinxai/pageguide).
