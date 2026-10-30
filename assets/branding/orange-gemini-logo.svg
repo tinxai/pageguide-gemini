@@ -1,7 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 180" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 180" role="img" aria-labelledby="title desc">
   <title id="title">Orange and Gemini logo</title>
   <desc id="desc">A bright orange beside the multicolor Gemini sparkle and Gemini wordmark.</desc>
   <defs>
+    <style>
+      .plus { fill: #5f6368; }
+      .word { fill: #171717; }
+      @media (prefers-color-scheme: dark) {
+        .plus { fill: #bdc1c6; }
+        .word { fill: #f1f3f4; }
+      }
+    </style>
     <radialGradient id="orange" cx="32%" cy="25%" r="75%">
       <stop offset="0" stop-color="#ffbf45"/>
       <stop offset="0.55" stop-color="#ff8a00"/>
@@ -29,6 +37,8 @@
     <ellipse cx="54" cy="62" rx="14" ry="9" fill="#fff" opacity=".2" transform="rotate(-35 54 62)"/>
   </g>
 
-  <path d="M202 27c7 37 28 58 65 65-37 7-58 28-65 65-7-37-28-58-65-65 37-7 58-28 65-65Z" fill="url(#gemini)"/>
-  <text x="282" y="120" fill="#171717" font-family="Google Sans, Product Sans, Arial, sans-serif" font-size="82" font-weight="500" letter-spacing="-3">Gemini</text>
+  <text class="plus" x="185" y="116" font-family="Arial, sans-serif" font-size="72" font-weight="400">+</text>
+
+  <path d="M325 27c7 37 28 58 65 65-37 7-58 28-65 65-7-37-28-58-65-65 37-7 58-28 65-65Z" fill="url(#gemini)"/>
+  <text class="word" x="405" y="120" font-family="Google Sans, Product Sans, Arial, sans-serif" font-size="82" font-weight="500" letter-spacing="-3">Gemini</text>
 </svg>

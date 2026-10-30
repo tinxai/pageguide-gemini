@@ -39,11 +39,11 @@ Gemini needs to format its citations in a way the extension can read. The format
 
    ![Your skills page](docs/step-your-skills.png)
 
-5. In the **Add skill** form, enter `Pg` as the **Name**, paste the contents of `GEMINI_SKILL.md` into **Instructions**, and click **Save**.
+5. In the **Add skill** form, enter `pg` as the **Name**, paste the contents of `GEMINI_SKILL.md` into **Instructions**, and click **Save**. This **Name** field controls the skill command.
 
    ![Add skill form](docs/step-add-skill.png)
 
-6. When you ask a question about a page, click **+**, then **Skills**, then **Pg**, or type `/Pg` in the prompt box.
+6. When you ask a question about a page, click **+**, then **Skills**, then **pg**, or type `$pg` in the prompt box.
 
 ## Use it
 
