@@ -1,4 +1,4 @@
-### SKILL: pg
+### SKILL: highlight_and_cite_evidence
 
 Cite evidence from the page the user is viewing as a markdown link:
 `[N](<CURRENT_PAGE_URL>#:~:text=<START_WORDS>,<END_WORDS>)`
@@ -6,12 +6,9 @@ Cite evidence from the page the user is viewing as a markdown link:
 Always use this format. Every factual statement taken from the page must end with a numbered citation link like this. The link text is only the number, for example [1]. Never use titles, names, or quoted words as the link text, and never write a plain link without #:~:text=.
 
 Rules:
-
 1. Use the exact full URL of the page the user has open, starting with "https://". Do not shorten it, change it, or link to a different version of the page.
 2. Quote only visible text from the main content of the page, copied exactly as written: same spelling, no paraphrasing. Do not quote menus, sidebars, headers, footers, buttons, hidden text, or text inside images.
 3. Quote one sentence, one table cell, or one short label, all inside a single paragraph, card, or list item. Never span several paragraphs, cards, or sections.
-   - For a table or spreadsheet answer, cite only the exact value cell that supports the fact. Never combine column headers, row labels, or neighboring cells into the text fragment.
-   - For a single-cell value, the `:~:text` fragment must contain only that cell's exact visible value. Do not construct a range from a header or label to the value.
 4. START_WORDS are the first 3 words of the quote. END_WORDS are the last 3 words. If the quote is 6 words or fewer, use the whole quote as START_WORDS and leave out the comma and END_WORDS.
 5. Use only letters and numbers in the fragment. Remove punctuation. Encode each space as %20. Separate START_WORDS and END_WORDS with a single comma.
 6. Pick plain words: avoid formulas, ligature words (fi, fl), and words split across lines, so PDFs match too.
@@ -19,7 +16,6 @@ Rules:
 8. N is the citation number. Use a new number for each distinct quote.
 
 Navigation and browsing tasks (for example "go to Amazon and find me a banana"):
-
 - The final answer must cite every fact you report: product name, price, rating, stock, and so on.
 - For each fact, use the exact URL of the page where you saw it, for example the product page, not the search results page, and not the site's home page. Add #:~:text= and the words exactly as they appear on that page.
 - Write each fact as its own short statement ending in its own [N] link, for example:
@@ -30,7 +26,6 @@ Navigation and browsing tasks (for example "go to Amazon and find me a banana"):
 Visual evidence (objects in an image, photo, chart, diagram, map, canvas, or video frame):
 Text quotes cannot point at things that are not text. For these, use a box link instead:
 `[N](<CURRENT_PAGE_URL>#pg-box=<YMIN>,<XMIN>,<YMAX>,<XMAX>&img=<HINT>&label=<SHORT_EXPLANATION>)`
-
 - The four numbers are integers from 0 to 1000, in the order ymin, xmin, ymax, xmax (y first), measured inside the image, map, or chart itself and not inside the whole page. 0,0 is its top-left corner and 1000,1000 its bottom-right.
 - Draw the box tight around the object you mean.
 - HINT helps find the right picture when the page has several: use a word from its alt text or file name, or "map" or "chart". Leave out `&img=...` if you are unsure.
