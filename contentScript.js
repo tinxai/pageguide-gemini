@@ -157,6 +157,11 @@
     const candidates = [];
     for (const s of occurrences(flat, parts[0])) {
       let e = s + parts[0].length;
+      // Never let a single flattened match spill across table cells, cards, or
+      // paragraphs. This is especially important for Google Sheets, where
+      // adjacent cells such as "Product", "Unit", and "Cost" otherwise look
+      // like one continuous string in the punctuation-insensitive index.
+      if (!map[s] || !map[e - 1] || map[e - 1].block !== map[s].block) continue;
       let paired = false;
       if (parts[1]) {
         for (const ei of occurrences(flat.slice(e), parts[1])) {
@@ -164,15 +169,27 @@
           if (map[end - 1].block === map[s].block) { e = end; paired = true; break; }
         }
       }
-      candidates.push({ s, e, paired, landmark: map[s].landmark });
+      candidates.push({ s, e, paired, landmark: map[s].landmark, dataCell: map[s].block.tagName === 'TD' });
     }
-    if (!candidates.length && parts[1]) {  // start words missing: use the end words alone
-      for (const s of occurrences(flat, parts[1])) candidates.push({ s, e: s + parts[1].length, paired: false, landmark: map[s].landmark });
+    // If a start/end range cannot be paired inside one block, prefer the end
+    // words when they exist. In Sheets, Gemini may emit "Product,C" even
+    // though Product is a header and C is the actual evidence cell; selecting
+    // the end prevents the annotation from landing on the header.
+    if (parts[1] && !candidates.some(candidate => candidate.paired)) {
+      const endCandidates = [];
+      for (const s of occurrences(flat, parts[1])) {
+        const e = s + parts[1].length;
+        if (map[s] && map[e - 1] && map[e - 1].block === map[s].block) {
+          endCandidates.push({ s, e, paired: false, landmark: map[s].landmark, dataCell: map[s].block.tagName === 'TD' });
+        }
+      }
+      if (endCandidates.length) candidates.splice(0, candidates.length, ...endCandidates);
     }
     if (!candidates.length) { console.debug('[PageGuide] no match for', parts[0]); return null; }
 
-    // best: paired start/end > unpaired; main content > landmark; then document order
-    candidates.sort((x, y) => (y.paired - x.paired) || (x.landmark - y.landmark) || (x.s - y.s));
+    // best: paired start/end > unpaired; spreadsheet data cell > row/column
+    // header; main content > landmark; then document order.
+    candidates.sort((x, y) => (y.paired - x.paired) || (y.dataCell - x.dataCell) || (x.landmark - y.landmark) || (x.s - y.s));
     const { s, e } = candidates[0];
     const a = map[s], b = map[e - 1];
     const r = document.createRange();
@@ -230,6 +247,7 @@
       st.textContent = `
         @keyframes pg-pulse { 0%,100% { box-shadow: 0 0 0 0 var(--pg-c); } 50% { box-shadow: 0 0 0 9px transparent; } }
         @keyframes pg-bob-r { 0%,100% { translate: 0 0; } 50% { translate: -10px 0; } }
+        @keyframes pg-bob-l { 0%,100% { translate: 0 0; } 50% { translate: 10px 0; } }
         @keyframes pg-bob-d { 0%,100% { translate: 0 0; } 50% { translate: 0 -10px; } }
         #pg-annot-root { position: fixed; inset: 0; z-index: 2147483647; pointer-events: none; transition: opacity .5s; }
         #pg-annot-root .pg-box { position: fixed; border: 3px solid var(--pg-c); border-radius: 6px; animation: pg-pulse 1.1s ease-in-out infinite; }
@@ -295,14 +313,23 @@
         arrow.style.animation = 'pg-bob-r 0.9s ease-in-out infinite';
         sign.style.left = Math.max(8, first.left - aw - 8) + 'px';
         sign.style.top = Math.max(8, midY - ah / 2 - 44) + 'px';
-      } else {
-        // no room on the left: arrow comes from above, pointing down
+      } else if (first.top > aw + 60) {
+        // no room on the left, but enough above: point down at the evidence
         arrow.style.left = first.left + first.width / 2 - aw / 2 + 'px';
         arrow.style.top = Math.max(4, first.top - aw - 6) + 'px';
         arrow.style.transform = 'rotate(90deg)';
         arrow.style.animation = 'pg-bob-d 0.9s ease-in-out infinite';
         sign.style.left = Math.max(8, first.left) + 'px';
         sign.style.top = Math.max(8, first.top - aw - 52) + 'px';
+      } else {
+        // Evidence near the top-left (common in Sheets): use the open space on
+        // the right instead of covering the cell with an arrow and sign.
+        arrow.style.left = Math.min(innerWidth - aw - 4, first.right + 8) + 'px';
+        arrow.style.top = midY - ah / 2 + 'px';
+        arrow.style.transform = 'rotate(180deg)';
+        arrow.style.animation = 'pg-bob-l 0.9s ease-in-out infinite';
+        sign.style.left = Math.min(innerWidth - 268, first.right + 8) + 'px';
+        sign.style.top = Math.max(8, midY - ah / 2 - 44) + 'px';
       }
     };
 
@@ -394,6 +421,47 @@
       if (Math.abs(dy) > 40) window.scrollBy(0, dy);   // centre the box itself when the image is taller than the screen
     }
     annotate(measure, citeId, spec.label);
+  }
+
+  // Google Workspace evidence is shown in a DOM-based read-only view because
+  // the normal editors paint their content onto canvases. Give users an
+  // explicit route back instead of relying on them to discover browser Back.
+  function workspaceEditorUrl() {
+    if (location.hostname !== 'docs.google.com') return '';
+    const m = location.pathname.match(/^\/(document|spreadsheets|presentation)\/d\/([^/]+)\/(mobilebasic|htmlview|htmlpresent)/i);
+    if (!m) return '';
+    const [, type, id] = m;
+    if (type === 'document') return `https://docs.google.com/document/d/${id}/edit`;
+    if (type === 'spreadsheets') {
+      const gid = new URL(location.href).searchParams.get('gid');
+      return `https://docs.google.com/spreadsheets/d/${id}/edit${gid ? `?gid=${encodeURIComponent(gid)}#gid=${encodeURIComponent(gid)}` : ''}`;
+    }
+    const slide = new URL(location.href).searchParams.get('slide');
+    return `https://docs.google.com/presentation/d/${id}/edit${slide ? `?slide=${encodeURIComponent(slide)}#slide=${encodeURIComponent(slide)}` : ''}`;
+  }
+
+  function addBackToEditorButton() {
+    if (window !== window.top || document.getElementById('pg-back-to-editor')) return;
+    const editorUrl = workspaceEditorUrl();
+    if (!editorUrl) return;
+    const button = document.createElement('a');
+    button.id = 'pg-back-to-editor';
+    button.href = editorUrl;
+    button.textContent = '\u2190 Back to editor';
+    button.setAttribute('aria-label', 'Back to Google editor');
+    Object.assign(button.style, {
+      position: 'fixed', top: '12px', right: '16px', zIndex: '2147483647',
+      padding: '9px 14px', borderRadius: '999px', background: '#e86f00', color: '#fff',
+      font: '700 14px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      textDecoration: 'none', boxShadow: '0 2px 8px rgba(0,0,0,.28)', cursor: 'pointer'
+    });
+    document.documentElement.appendChild(button);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', addBackToEditorButton, { once: true });
+  } else {
+    addBackToEditorButton();
   }
 
   chrome.runtime.onMessage.addListener((message) => {

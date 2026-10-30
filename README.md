@@ -73,7 +73,7 @@ Give Gemini a browsing task, such as "scroll down and find the photo of Harry Ka
 ## Notes
 
 - **Webpages:** the extension highlights the quote itself; clicking another citation replaces the previous highlight. It also draws a pulsing box, a bobbing arrow and an "Evidence N" sign on the quote, which fade out after a few seconds.
-- **Google Docs, Sheets, and Slides:** these editors draw content on canvases instead of exposing normal webpage text. PageGuide keeps the same tab but switches it to Google's text-readable view so it can highlight the cited words.
+- **Google Docs, Sheets, and Slides:** these editors draw content on canvases instead of exposing normal webpage text. PageGuide keeps the same tab but switches it to Google's text-readable view so it can highlight the cited words. Click **← Back to editor** to return to normal editing.
 - **PDFs:** Chrome's PDF viewer blocks extension scripts, so Chrome highlights the quote itself. Each click opens the PDF fresh and closes the old tab, so only the latest quote is highlighted.
 - If a quote isn't highlighted, the words in the citation probably don't match the page text exactly. Pages where text is drawn as an image can't be highlighted.
 
