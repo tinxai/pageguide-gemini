@@ -3,10 +3,39 @@ function normalizeUrl(url) {
   if (!url) return '';
   try {
     const u = new URL(url);
+    const workspace = u.pathname.match(/^\/(document|spreadsheets|presentation)\/d\/([^/]+)/i);
+    if (u.hostname === 'docs.google.com' && workspace) {
+      // Treat an editor URL and its text-readable view as the same open file.
+      return `docs.google.com/${workspace[1].toLowerCase()}/d/${workspace[2]}`;
+    }
     // Strip hash, query params, trailing slashes, and 'www.'
     return (u.hostname.replace(/^www\./, '') + u.pathname).replace(/\/+$/, '').toLowerCase();
   } catch (e) {
     return url.split('#')[0].split('?')[0].replace(/\/+$/, '').toLowerCase();
+  }
+}
+
+// Google Workspace editors paint document content onto canvases, so there are
+// no DOM text nodes for CSS text highlights. Their read-only views expose the
+// same content as real text. Keep using the existing tab, but switch that tab
+// to the corresponding readable view before applying the highlight.
+function googleWorkspaceViewUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.hostname !== 'docs.google.com') return '';
+    const m = u.pathname.match(/^\/(document|spreadsheets|presentation)\/d\/([^/]+)/i);
+    if (!m) return '';
+    const type = m[1].toLowerCase(), id = m[2];
+    if (type === 'document') return `https://docs.google.com/document/d/${id}/mobilebasic`;
+    if (type === 'spreadsheets') {
+      const hashGid = u.hash.match(/(?:^#|[&#])gid=([^&]+)/i);
+      const gid = u.searchParams.get('gid') || (hashGid && hashGid[1]);
+      return `https://docs.google.com/spreadsheets/d/${id}/htmlview${gid ? `?gid=${encodeURIComponent(gid)}` : ''}`;
+    }
+    const slide = u.searchParams.get('slide');
+    return `https://docs.google.com/presentation/d/${id}/htmlpresent${slide ? `?slide=${encodeURIComponent(slide)}` : ''}`;
+  } catch (e) {
+    return '';
   }
 }
 
@@ -28,14 +57,25 @@ const isPdfUrl = (u) => /\.pdf($|[?#])|arxiv\.org\/pdf\//i.test(u || '');
 
 // Chrome's PDF viewer blocks extension scripts but understands #:~:text= natively,
 // so for PDFs hand the full URL to the existing tab and let Chrome highlight.
-function showEvidence(tab, fullUrl, citeId, quote, box) {
+function showEvidence(tab, fullUrl, citeId, quote, box, cell) {
   if (isPdfUrl(tab.url)) {
     chrome.tabs.update(tab.id, { url: fullUrl }, () => {
       void chrome.runtime.lastError;
       setTimeout(() => chrome.tabs.reload(tab.id, () => void chrome.runtime.lastError), 250);
     });
   } else {
-    sendHighlight(tab.id, { citeId, quote, box });
+    const workspaceView = googleWorkspaceViewUrl(fullUrl);
+    if (workspaceView && tab.url !== workspaceView) {
+      const listener = (tabId, info) => {
+        if (tabId !== tab.id || info.status !== 'complete') return;
+        chrome.tabs.onUpdated.removeListener(listener);
+        setTimeout(() => sendHighlight(tab.id, { citeId, quote, box, cell }), 350);
+      };
+      chrome.tabs.onUpdated.addListener(listener);
+      chrome.tabs.update(tab.id, { url: workspaceView }, () => void chrome.runtime.lastError);
+    } else {
+      sendHighlight(tab.id, { citeId, quote, box, cell });
+    }
   }
 }
 
@@ -44,6 +84,22 @@ function parseBoxLink(url) {
   let u = url || '';
   try { u = decodeURIComponent(u); } catch (e) {}
   return /pg-box=/i.test(u) ? u : '';
+}
+
+// Exact Google Sheets cell evidence: #pg-cell=C4&label=visible%20value
+function parseCellLink(url) {
+  let value = url || '';
+  if (!/[?#&]pg-cell=/i.test(value)) {
+    try { value = decodeURIComponent(value); } catch (e) {}
+  }
+  try {
+    const params = new URLSearchParams(new URL(value).hash.replace(/^#/, ''));
+    const ref = params.get('pg-cell');
+    if (!/^[A-Z]+\d+$/i.test(ref || '')) return null;
+    return { ref: ref.toUpperCase(), label: (params.get('label') || '').trim() };
+  } catch (e) {
+    return null;
+  }
 }
 
 function parseTextFragment(url) {
@@ -59,7 +115,7 @@ function parseTextFragment(url) {
 // the link in a new tab, close it and reuse the tab that already has the page.
 chrome.tabs.onCreated.addListener((newTab) => {
   const url = newTab.pendingUrl || newTab.url;
-  if (!url || !/^(https?|file):/.test(url) || !/:~:text=|%3A~%3Atext=|pg-box=|pg-box%3D/i.test(url)) return;
+  if (!url || !/^(https?|file):/.test(url) || !/:~:text=|%3A~%3Atext=|pg-box=|pg-box%3D|pg-cell=|pg-cell%3D/i.test(url)) return;
   const clean = normalizeUrl(url);
   chrome.tabs.query({}, (tabs) => {
     const existing = tabs.find(t => t.id !== newTab.id && t.url && normalizeUrl(t.url) === clean);
@@ -77,7 +133,7 @@ chrome.tabs.onCreated.addListener((newTab) => {
       void chrome.runtime.lastError;
       chrome.tabs.update(existing.id, { active: true }, () => {
         chrome.windows.update(existing.windowId, { focused: true });
-        showEvidence(existing, url, '1', parseTextFragment(url), parseBoxLink(url));
+        showEvidence(existing, url, '1', parseTextFragment(url), parseBoxLink(url), parseCellLink(url));
       });
     });
   });
@@ -85,7 +141,7 @@ chrome.tabs.onCreated.addListener((newTab) => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'NAVIGATE_OR_FOCUS_TAB') {
-    const { targetUrl, citeId, quote, box } = message.payload;
+    const { targetUrl, citeId, quote, box, cell } = message.payload;
     const cleanTarget = normalizeUrl(targetUrl);
 
     chrome.tabs.query({}, (tabs) => {
@@ -103,17 +159,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Switch to the existing tab without opening a new tab
         chrome.tabs.update(targetTab.id, { active: true }, () => {
           chrome.windows.update(targetTab.windowId, { focused: true }, () => {
-            showEvidence(targetTab, targetUrl, citeId, quote, box);
+            showEvidence(targetTab, targetUrl, citeId, quote, box, cell);
           });
         });
       } else {
         // Only if no relevant tab exists anywhere, open target
-        chrome.tabs.create({ url: targetUrl }, (newTab) => {
+        chrome.tabs.create({ url: googleWorkspaceViewUrl(targetUrl) || targetUrl }, (newTab) => {
           const listener = (tabId, info) => {
             if (tabId === newTab.id && info.status === 'complete') {
               chrome.tabs.onUpdated.removeListener(listener);
               setTimeout(() => {
-                sendHighlight(newTab.id, { citeId, quote, box });
+                sendHighlight(newTab.id, { citeId, quote, box, cell });
               }, 600);
             }
           };

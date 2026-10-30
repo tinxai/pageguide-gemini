@@ -3,6 +3,12 @@
   "name": "PageGuide Gemini",
   "version": "1.0.0",
   "description": "Click a Gemini citation to jump to the already-open source tab and highlight the cited text, with no duplicate tabs.",
+  "icons": {
+    "16": "assets/icons/orange-16.png",
+    "32": "assets/icons/orange-32.png",
+    "48": "assets/icons/orange-48.png",
+    "128": "assets/icons/orange-128.png"
+  },
   "permissions": [
     "tabs",
     "scripting"

@@ -157,6 +157,9 @@
     const candidates = [];
     for (const s of occurrences(flat, parts[0])) {
       let e = s + parts[0].length;
+      // Never let a flattened match spill across table cells, cards, or
+      // paragraphs that only appear adjacent in the text index.
+      if (!map[s] || !map[e - 1] || map[e - 1].block !== map[s].block) continue;
       let paired = false;
       if (parts[1]) {
         for (const ei of occurrences(flat.slice(e), parts[1])) {
@@ -164,15 +167,26 @@
           if (map[end - 1].block === map[s].block) { e = end; paired = true; break; }
         }
       }
-      candidates.push({ s, e, paired, landmark: map[s].landmark });
+      candidates.push({ s, e, paired, landmark: map[s].landmark, dataCell: map[s].block.tagName === 'TD' });
     }
-    if (!candidates.length && parts[1]) {  // start words missing: use the end words alone
-      for (const s of occurrences(flat, parts[1])) candidates.push({ s, e: s + parts[1].length, paired: false, landmark: map[s].landmark });
+    // If a start/end range cannot be paired inside one block, prefer a valid
+    // end match. This avoids treating a label or header as the evidence when
+    // the intended value is in a separate block or table cell.
+    if (parts[1] && !candidates.some(candidate => candidate.paired)) {
+      const endCandidates = [];
+      for (const s of occurrences(flat, parts[1])) {
+        const e = s + parts[1].length;
+        if (map[s] && map[e - 1] && map[e - 1].block === map[s].block) {
+          endCandidates.push({ s, e, paired: false, landmark: map[s].landmark, dataCell: map[s].block.tagName === 'TD' });
+        }
+      }
+      if (endCandidates.length) candidates.splice(0, candidates.length, ...endCandidates);
     }
     if (!candidates.length) { console.debug('[PageGuide] no match for', parts[0]); return null; }
 
-    // best: paired start/end > unpaired; main content > landmark; then document order
-    candidates.sort((x, y) => (y.paired - x.paired) || (x.landmark - y.landmark) || (x.s - y.s));
+    // best: paired start/end > unpaired; spreadsheet data cell > row/column
+    // header; main content > landmark; then document order.
+    candidates.sort((x, y) => (y.paired - x.paired) || (y.dataCell - x.dataCell) || (x.landmark - y.landmark) || (x.s - y.s));
     const { s, e } = candidates[0];
     const a = map[s], b = map[e - 1];
     const r = document.createRange();
@@ -185,8 +199,12 @@
     let range = null;
     try { range = buildRange(quoteText); } catch (e) {}
     if (!range) {
-      if (window.find) window.find(String(quoteText).split(',')[0], false, false, true);
-      return;
+      if (isGoogleWorkspaceReadableView()) {
+        showNoEvidenceNotice(citeId);
+      } else if (window.find) {
+        window.find(String(quoteText).split(',')[0], false, false, true);
+      }
+      return false;
     }
     const color = getColorForId(citeId);
     if (window.CSS && CSS.highlights) {
@@ -205,6 +223,68 @@
     const el = range.startContainer.parentElement;
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     annotate(range, citeId);
+    return true;
+  }
+
+  function applyTextHighlight(range, citeId) {
+    if (window.CSS && CSS.highlights) {
+      const tree = range.startContainer.getRootNode();
+      const host = tree instanceof ShadowRoot ? tree : document.head;
+      if (!host.querySelector('#pg-hl-style')) {
+        const st = document.createElement('style'); st.id = 'pg-hl-style';
+        st.textContent = '::highlight(pg-evidence){background-color:rgba(255,224,102,.65);color:inherit}';
+        host.appendChild(st);
+      }
+      CSS.highlights.set('pg-evidence', new Highlight(range));
+    } else {
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
+    }
+    const el = range.startContainer.parentElement;
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    annotate(range, citeId);
+  }
+
+  function jumpToSheetCell(citeId, spec) {
+    if (!spec || !/\/htmlview\/sheet\/?$/i.test(location.pathname)) return false;
+    const m = String(spec.ref || '').match(/^([A-Z]+)(\d+)$/i);
+    if (!m) return false;
+    let column = 0;
+    for (const ch of m[1].toUpperCase()) column = column * 26 + ch.charCodeAt(0) - 64;
+    column -= 1;
+    const row = Number(m[2]);
+    const rowHeader = [...document.querySelectorAll('th[id*="R"]')]
+      .find(el => new RegExp(`R${row - 1}$`).test(el.id));
+    const cell = rowHeader?.parentElement?.querySelectorAll('td')[column];
+    if (!cell) { showNoEvidenceNotice(citeId); return false; }
+    const visibleLabel = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+    if (spec.label && visibleLabel(cell.textContent) !== visibleLabel(spec.label)) {
+      showNoEvidenceNotice(citeId);
+      return false;
+    }
+    const range = document.createRange();
+    range.selectNodeContents(cell);
+    applyTextHighlight(range, citeId);
+    return true;
+  }
+
+  function isGoogleWorkspaceReadableView() {
+    return location.hostname === 'docs.google.com' &&
+      /^\/(document|spreadsheets|presentation)\/d\/[^/]+\/(mobilebasic|htmlview|htmlpresent)(?:\/|$)/i.test(location.pathname);
+  }
+
+  function showNoEvidenceNotice(citeId) {
+    document.getElementById('pg-no-evidence')?.remove();
+    const notice = document.createElement('div');
+    notice.id = 'pg-no-evidence';
+    notice.textContent = `Evidence ${citeId}: exact cited text not found`;
+    Object.assign(notice.style, {
+      position: 'fixed', left: '50%', top: '18px', translate: '-50% 0',
+      zIndex: '2147483647', padding: '10px 16px', borderRadius: '9px',
+      background: '#b3261e', color: '#fff', boxShadow: '0 3px 12px rgba(0,0,0,.3)',
+      font: '700 14px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+    });
+    document.documentElement.appendChild(notice);
+    setTimeout(() => notice.remove(), 5000);
   }
 
   // ---- Big arrow + sign annotation (click-through overlay that removes itself) ----
@@ -230,6 +310,7 @@
       st.textContent = `
         @keyframes pg-pulse { 0%,100% { box-shadow: 0 0 0 0 var(--pg-c); } 50% { box-shadow: 0 0 0 9px transparent; } }
         @keyframes pg-bob-r { 0%,100% { translate: 0 0; } 50% { translate: -10px 0; } }
+        @keyframes pg-bob-l { 0%,100% { translate: 0 0; } 50% { translate: 10px 0; } }
         @keyframes pg-bob-d { 0%,100% { translate: 0 0; } 50% { translate: 0 -10px; } }
         #pg-annot-root { position: fixed; inset: 0; z-index: 2147483647; pointer-events: none; transition: opacity .5s; }
         #pg-annot-root .pg-box { position: fixed; border: 3px solid var(--pg-c); border-radius: 6px; animation: pg-pulse 1.1s ease-in-out infinite; }
@@ -295,14 +376,23 @@
         arrow.style.animation = 'pg-bob-r 0.9s ease-in-out infinite';
         sign.style.left = Math.max(8, first.left - aw - 8) + 'px';
         sign.style.top = Math.max(8, midY - ah / 2 - 44) + 'px';
-      } else {
-        // no room on the left: arrow comes from above, pointing down
+      } else if (first.top > aw + 60) {
+        // no room on the left, but enough above: point down at the evidence
         arrow.style.left = first.left + first.width / 2 - aw / 2 + 'px';
         arrow.style.top = Math.max(4, first.top - aw - 6) + 'px';
         arrow.style.transform = 'rotate(90deg)';
         arrow.style.animation = 'pg-bob-d 0.9s ease-in-out infinite';
         sign.style.left = Math.max(8, first.left) + 'px';
         sign.style.top = Math.max(8, first.top - aw - 52) + 'px';
+      } else {
+        // Evidence near the top-left (common in Sheets): use the open space on
+        // the right instead of covering the cell with an arrow and sign.
+        arrow.style.left = Math.min(innerWidth - aw - 4, first.right + 8) + 'px';
+        arrow.style.top = midY - ah / 2 + 'px';
+        arrow.style.transform = 'rotate(180deg)';
+        arrow.style.animation = 'pg-bob-l 0.9s ease-in-out infinite';
+        sign.style.left = Math.min(innerWidth - 268, first.right + 8) + 'px';
+        sign.style.top = Math.max(8, midY - ah / 2 - 44) + 'px';
       }
     };
 
@@ -374,6 +464,21 @@
     return { y1, x1, y2, x2, img: get('img'), label: get('label') };
   }
 
+  function parseCellLink(href) {
+    let value = href || '';
+    if (!/[?#&]pg-cell=/i.test(value)) {
+      try { value = decodeURIComponent(value); } catch (e) {}
+    }
+    try {
+      const params = new URLSearchParams(new URL(value, location.href).hash.replace(/^#/, ''));
+      const ref = params.get('pg-cell');
+      if (!/^[A-Z]+\d+$/i.test(ref || '')) return null;
+      return { ref: ref.toUpperCase(), label: (params.get('label') || '').trim() };
+    } catch (e) {
+      return null;
+    }
+  }
+
   function jumpToBox(citeId, spec, keepText = false) {
     if (!keepText && window.CSS && CSS.highlights) CSS.highlights.delete('pg-evidence');  // drop any earlier text highlight
     const el = pickVisual(spec.img);
@@ -396,14 +501,67 @@
     annotate(measure, citeId, spec.label);
   }
 
+  // Google Workspace evidence is shown in a DOM-based read-only view because
+  // the normal editors paint their content onto canvases. Give users an
+  // explicit route back instead of relying on them to discover browser Back.
+  function workspaceEditorUrl() {
+    if (location.hostname !== 'docs.google.com') return '';
+    const m = location.pathname.match(/^\/(document|spreadsheets|presentation)\/d\/([^/]+)\/(mobilebasic|htmlview|htmlpresent)/i);
+    if (!m) return '';
+    const [, type, id] = m;
+    if (type === 'document') return `https://docs.google.com/document/d/${id}/edit`;
+    if (type === 'spreadsheets') {
+      const gid = new URL(location.href).searchParams.get('gid');
+      return `https://docs.google.com/spreadsheets/d/${id}/edit${gid ? `?gid=${encodeURIComponent(gid)}#gid=${encodeURIComponent(gid)}` : ''}`;
+    }
+    const slide = new URL(location.href).searchParams.get('slide');
+    return `https://docs.google.com/presentation/d/${id}/edit${slide ? `?slide=${encodeURIComponent(slide)}#slide=${encodeURIComponent(slide)}` : ''}`;
+  }
+
+  function addBackToEditorButton() {
+    if (window !== window.top || document.getElementById('pg-back-to-editor')) return;
+    const editorUrl = workspaceEditorUrl();
+    if (!editorUrl) return;
+    const button = document.createElement('a');
+    button.id = 'pg-back-to-editor';
+    button.href = editorUrl;
+    button.textContent = '\u2190 Back to editor';
+    button.setAttribute('aria-label', 'Back to Google editor');
+    Object.assign(button.style, {
+      position: 'fixed', top: '12px', right: '16px', zIndex: '2147483647',
+      padding: '9px 14px', borderRadius: '999px', background: '#e86f00', color: '#fff',
+      font: '700 14px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      textDecoration: 'none', boxShadow: '0 2px 8px rgba(0,0,0,.28)', cursor: 'pointer'
+    });
+    document.documentElement.appendChild(button);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', addBackToEditorButton, { once: true });
+  } else {
+    addBackToEditorButton();
+  }
+
+  function isSheetsReadableViewContainer() {
+    return window === window.top &&
+      location.hostname === 'docs.google.com' &&
+      /^\/spreadsheets\/d\/[^/]+\/htmlview\/?$/i.test(location.pathname);
+  }
+
   chrome.runtime.onMessage.addListener((message) => {
     if (message.type === 'EXECUTE_JUMP_AND_HIGHLIGHT') {
-      const { citeId, quote, box } = message.payload;
+      const { citeId, quote, box, cell } = message.payload;
+      // tabs.sendMessage reaches every frame. In Sheets' readable view, the
+      // outer frame contains UI labels such as "Sheet1", while the nested
+      // /htmlview/sheet frame contains the actual cells. Let only the content
+      // frame process text so short values cannot highlight unrelated UI.
+      if ((quote || cell) && isSheetsReadableViewContainer()) return;
       const spec = box && parseBoxLink(box);
       // a link may carry both: highlight the text AND box the same thing on the map/image
-      if (quote) jumpToEvidence(citeId, quote);
+      if (cell) jumpToSheetCell(citeId, cell);
+      else if (quote) jumpToEvidence(citeId, quote);
       if (spec) jumpToBox(citeId, spec, !!quote);
-      else if (!quote) jumpToEvidence(citeId, quote);
+      else if (!quote && !cell) jumpToEvidence(citeId, quote);
     }
   });
 
@@ -418,7 +576,7 @@
     let decodedHref = href; try { decodedHref = decodeURIComponent(href); } catch (e) {}
     // PDFs: let Chrome open the link natively so its viewer highlights; background dedupes the tab
     if (/\.pdf($|[?#])|arxiv\.org\/pdf\//i.test(href)) return;
-    if (decodedHref.includes(':~:text=') || /pg-box=/i.test(decodedHref)) {
+    if (decodedHref.includes(':~:text=') || /pg-box=|pg-cell=/i.test(decodedHref)) {
       // STOP browser from opening new tab
       e.preventDefault();
       e.stopPropagation();
@@ -434,7 +592,8 @@
           targetUrl: href,
           citeId: citeId,
           quote: targetText,
-          box: /pg-box=/i.test(decodedHref) ? decodedHref : ''
+          box: /pg-box=/i.test(decodedHref) ? decodedHref : '',
+          cell: parseCellLink(href)
         }
       });
     }
