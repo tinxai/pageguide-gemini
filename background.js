@@ -40,6 +40,45 @@ function googleWorkspaceViewUrl(url) {
 }
 
 
+// Inverse of googleWorkspaceViewUrl: guides point at the live editor's own UI,
+// so a tab left in a read-only view by an earlier citation must go back to it.
+function googleWorkspaceEditorUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.hostname !== 'docs.google.com') return '';
+    const m = u.pathname.match(/^\/(document|spreadsheets|presentation)\/d\/([^/]+)\/(mobilebasic|htmlview|htmlpresent)/i);
+    if (!m) return '';
+    const [, type, id] = m;
+    if (type.toLowerCase() === 'spreadsheets') {
+      const gid = u.searchParams.get('gid');
+      return `https://docs.google.com/spreadsheets/d/${id}/edit${gid ? `?gid=${encodeURIComponent(gid)}#gid=${encodeURIComponent(gid)}` : ''}`;
+    }
+    return `https://docs.google.com/${type.toLowerCase()}/d/${id}/edit`;
+  } catch (e) {
+    return '';
+  }
+}
+
+// Step-by-step guide link: #pg-guide=1&step=<UI label>~<instruction>&step=...
+function parseGuideLink(url) {
+  let value = url || '';
+  if (!/[#&]pg-guide=/i.test(value)) { try { value = decodeURIComponent(value); } catch (e) {} }
+  try {
+    const params = new URLSearchParams(new URL(value).hash.replace(/^#/, ''));
+    if (!params.has('pg-guide')) return null;
+    const steps = params.getAll('step').slice(0, 12).map((s) => {
+      const cut = s.indexOf('~');
+      return {
+        target: (cut === -1 ? s : s.slice(0, cut)).trim().slice(0, 80),
+        say: (cut === -1 ? '' : s.slice(cut + 1)).trim().slice(0, 240)
+      };
+    }).filter(step => step.target);
+    return steps.length ? { steps } : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 // Deliver the highlight request; if the page has no content script yet
 // (tab opened before the extension was reloaded), inject it and retry.
 function sendHighlight(tabId, payload, attempt = 0) {
@@ -57,7 +96,23 @@ const isPdfUrl = (u) => /\.pdf($|[?#])|arxiv\.org\/pdf\//i.test(u || '');
 
 // Chrome's PDF viewer blocks extension scripts but understands #:~:text= natively,
 // so for PDFs hand the full URL to the existing tab and let Chrome highlight.
-function showEvidence(tab, fullUrl, citeId, quote, box, cell) {
+function showEvidence(tab, fullUrl, citeId, quote, box, cell, guide) {
+  if (guide) {
+    // Guides run on the live page, never on a read-only view or a PDF.
+    const editorUrl = googleWorkspaceEditorUrl(tab.url);
+    if (editorUrl) {
+      const listener = (tabId, info) => {
+        if (tabId !== tab.id || info.status !== 'complete') return;
+        chrome.tabs.onUpdated.removeListener(listener);
+        setTimeout(() => sendHighlight(tab.id, { citeId, guide }), 600);
+      };
+      chrome.tabs.onUpdated.addListener(listener);
+      chrome.tabs.update(tab.id, { url: editorUrl }, () => void chrome.runtime.lastError);
+    } else {
+      sendHighlight(tab.id, { citeId, guide });
+    }
+    return;
+  }
   if (isPdfUrl(tab.url)) {
     chrome.tabs.update(tab.id, { url: fullUrl }, () => {
       void chrome.runtime.lastError;
@@ -115,12 +170,12 @@ function parseTextFragment(url) {
 // the link in a new tab, close it and reuse the tab that already has the page.
 chrome.tabs.onCreated.addListener((newTab) => {
   const url = newTab.pendingUrl || newTab.url;
-  if (!url || !/^(https?|file):/.test(url) || !/:~:text=|%3A~%3Atext=|pg-box=|pg-box%3D|pg-cell=|pg-cell%3D/i.test(url)) return;
+  if (!url || !/^(https?|file):/.test(url) || !/:~:text=|%3A~%3Atext=|pg-box=|pg-box%3D|pg-cell=|pg-cell%3D|pg-guide=|pg-guide%3D/i.test(url)) return;
   const clean = normalizeUrl(url);
   chrome.tabs.query({}, (tabs) => {
     const existing = tabs.find(t => t.id !== newTab.id && t.url && normalizeUrl(t.url) === clean);
     if (!existing) return;
-    if (isPdfUrl(url) || isPdfUrl(existing.url)) {
+    if (!/pg-guide/i.test(url) && (isPdfUrl(url) || isPdfUrl(existing.url))) {
       // Chrome only highlights #:~:text= when a click opens the page, so keep the
       // freshly opened tab and drop the stale one: still a single tab, now highlighted.
       chrome.tabs.update(newTab.id, { active: true }, () => {
@@ -133,7 +188,7 @@ chrome.tabs.onCreated.addListener((newTab) => {
       void chrome.runtime.lastError;
       chrome.tabs.update(existing.id, { active: true }, () => {
         chrome.windows.update(existing.windowId, { focused: true });
-        showEvidence(existing, url, '1', parseTextFragment(url), parseBoxLink(url), parseCellLink(url));
+        showEvidence(existing, url, '1', parseTextFragment(url), parseBoxLink(url), parseCellLink(url), parseGuideLink(url));
       });
     });
   });
@@ -141,7 +196,7 @@ chrome.tabs.onCreated.addListener((newTab) => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'NAVIGATE_OR_FOCUS_TAB') {
-    const { targetUrl, citeId, quote, box, cell } = message.payload;
+    const { targetUrl, citeId, quote, box, cell, guide } = message.payload;
     const cleanTarget = normalizeUrl(targetUrl);
 
     chrome.tabs.query({}, (tabs) => {
@@ -159,18 +214,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Switch to the existing tab without opening a new tab
         chrome.tabs.update(targetTab.id, { active: true }, () => {
           chrome.windows.update(targetTab.windowId, { focused: true }, () => {
-            showEvidence(targetTab, targetUrl, citeId, quote, box, cell);
+            showEvidence(targetTab, targetUrl, citeId, quote, box, cell, guide);
           });
         });
       } else {
         // Only if no relevant tab exists anywhere, open target
-        chrome.tabs.create({ url: googleWorkspaceViewUrl(targetUrl) || targetUrl }, (newTab) => {
+        chrome.tabs.create({ url: guide ? targetUrl : (googleWorkspaceViewUrl(targetUrl) || targetUrl) }, (newTab) => {
           const listener = (tabId, info) => {
             if (tabId === newTab.id && info.status === 'complete') {
               chrome.tabs.onUpdated.removeListener(listener);
               setTimeout(() => {
-                sendHighlight(newTab.id, { citeId, quote, box, cell });
-              }, 600);
+                sendHighlight(newTab.id, guide ? { citeId, guide } : { citeId, quote, box, cell });
+              }, guide ? 1500 : 600);
             }
           };
           chrome.tabs.onUpdated.addListener(listener);
