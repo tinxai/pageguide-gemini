@@ -537,44 +537,71 @@
 
   const guideNorm = (s) => String(s || '').toLowerCase().replace(/[….]+\s*$/, '').replace(/\s+/g, ' ').trim();
 
+  // Rect in top-window coordinates, so controls inside same-origin iframes
+  // (many dialogs are iframes) line up with the overlay.
+  function topRect(el) {
+    const r = el.getBoundingClientRect();
+    let left = r.left, top = r.top;
+    try {
+      let win = el.ownerDocument.defaultView;
+      while (win && win !== window && win.frameElement) {
+        const f = win.frameElement.getBoundingClientRect();
+        left += f.left; top += f.top;
+        win = win.parent;
+      }
+    } catch (e) {}
+    return { left, top, width: r.width, height: r.height, right: left + r.width, bottom: top + r.height };
+  }
+
   // Best visible control whose accessible name or text matches the label.
-  // Returns null (never a guess) when nothing matches well enough.
+  // Searches the page, open shadow roots and same-origin iframes, so popups and
+  // dialogs are found wherever they render. Returns null (never a guess) when
+  // nothing matches well enough.
   function findGuideTarget(label) {
     const want = guideNorm(label);
     if (!want) return null;
-    let best = null, bestScore = 0, bestArea = Infinity;
-    const consider = (el) => {
-      if (el.closest('#pg-annot-root, #pg-guide-root')) return;
-      const names = [el.getAttribute('aria-label'), el.getAttribute('data-tooltip'), el.getAttribute('title'), el.getAttribute('alt')];
-      if (el.childElementCount < 6) {
-        const text = el.textContent;
-        if (text && text.length <= 120) names.push(text);
-      }
-      let score = 0;
-      for (const raw of names) {
-        const n = guideNorm(raw);
-        if (!n) continue;
-        let s = 0;
-        if (n === want) s = 100;
-        else if (n.startsWith(want)) s = 70 - Math.min(25, (n.length - want.length) / 3);
-        else if (new RegExp(`(^|[^\\p{L}\\p{N}])${want.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\p{L}\\p{N}])`, 'u').test(n)) s = 40 - Math.min(20, (n.length - want.length) / 4);
-        score = Math.max(score, s);
-      }
-      if (score < 30) return;
-      if (isHidden(el)) return;
-      const rect = el.getBoundingClientRect();
-      if (rect.width < 4 || rect.height < 4 || visibleArea(rect) <= 0) return;
-      const area = rect.width * rect.height;
-      if (area > innerWidth * innerHeight * 0.6) return;   // a page-sized container is never "the button"
-      if (score > bestScore || (score === bestScore && area < bestArea)) { best = el; bestScore = score; bestArea = area; }
+    const wordRe = new RegExp(`(^|[^\\p{L}\\p{N}])${want.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\p{L}\\p{N}])`, 'u');
+    const search = (selector, minScore, leafOnly) => {
+      let best = null, bestScore = 0, bestArea = Infinity;
+      const consider = (el) => {
+        if (el.closest('#pg-annot-root, #pg-guide-root')) return;
+        if (leafOnly && el.childElementCount > 2) return;
+        const names = [el.getAttribute('aria-label'), el.getAttribute('data-tooltip'), el.getAttribute('title'), el.getAttribute('alt')];
+        if (el.childElementCount < 6) {
+          const text = el.textContent;
+          if (text && text.length <= 120) names.push(text);
+        }
+        let score = 0;
+        for (const raw of names) {
+          const n = guideNorm(raw);
+          if (!n) continue;
+          let sc = 0;
+          if (n === want) sc = 100;
+          else if (n.startsWith(want)) sc = 70 - Math.min(25, (n.length - want.length) / 3);
+          else if (wordRe.test(n)) sc = 40 - Math.min(20, (n.length - want.length) / 4);
+          score = Math.max(score, sc);
+        }
+        if (score < minScore) return;
+        if (isHidden(el)) return;
+        const rect = topRect(el);
+        if (rect.width < 4 || rect.height < 4 || visibleArea(rect) <= 0) return;
+        const area = rect.width * rect.height;
+        if (area > innerWidth * innerHeight * 0.6) return;   // a page-sized container is never "the button"
+        if (score > bestScore || (score === bestScore && area < bestArea)) { best = el; bestScore = score; bestArea = area; }
+      };
+      (function walk(root) {
+        for (const el of root.querySelectorAll(selector)) consider(el);
+        // shadow hosts are usually plain elements, so look at every element for one
+        for (const el of root.querySelectorAll('*')) {
+          if (el.shadowRoot) walk(el.shadowRoot);
+          else if (el.tagName === 'IFRAME') { try { if (el.contentDocument) walk(el.contentDocument); } catch (e) {} }
+        }
+      })(document);
+      return best;
     };
-    (function walk(root) {
-      for (const el of root.querySelectorAll(GUIDE_INTERACTIVE)) {
-        consider(el);
-        if (el.shadowRoot) walk(el.shadowRoot);
-      }
-    })(document);
-    return best;
+    // Clickable-looking controls first; if none, any plain element whose text is an
+    // exact or leading match (dialog options are often bare divs and spans).
+    return search(GUIDE_INTERACTIVE, 30, false) || search('div, span, p, h1, h2, h3, h4, td, th', 70, true);
   }
 
   function ensureGuideStyle() {
@@ -602,7 +629,7 @@
     if (!guide) return;
     clearInterval(guide.poll);
     clearTimeout(guide.advance);
-    document.removeEventListener('pointerdown', onGuidePointer, true);
+    for (const d of guide.docs) d.removeEventListener('pointerdown', onGuidePointer, true);
     guide.root.remove();
     guide = null;
     clearAnnotation();
@@ -624,7 +651,7 @@
     root.querySelector('.pg-g-prev').addEventListener('click', () => guide && showGuideStep(guide.i - 1));
     root.querySelector('.pg-g-next').addEventListener('click', () => guide && nextGuideStep());
 
-    guide = { steps, i: 0, root, el: null, poll: 0, advance: 0, deadline: 0 };
+    guide = { steps, i: 0, root, el: null, poll: 0, advance: 0, deadline: 0, docs: new Set([document]) };
     document.addEventListener('pointerdown', onGuidePointer, true);
     showGuideStep(0, true);
   }
@@ -667,19 +694,25 @@
     root.querySelector('.pg-g-next').textContent = i === total - 1 ? 'Done' : 'Next';
 
     const g = guide;
+    let warned = false;
     const attach = () => {
       if (guide !== g || g.i !== i) return true;
       const el = findGuideTarget(step.target);
       if (!el) {
-        if (Date.now() > g.deadline) {
+        // Keep looking after the timeout: a popup may open late, or the user may
+        // do the step by hand and the next control appear afterwards.
+        if (Date.now() > g.deadline && !warned) {
+          warned = true;
           root.querySelector('.pg-g-status').textContent =
-            `Couldn’t find “${step.target}” on screen. Follow the instruction above, then press ${i === total - 1 ? 'Done' : 'Next'}.`;
-          return true;
+            `Couldn\u2019t find \u201c${step.target}\u201d on screen. Follow the instruction above, then press ${i === total - 1 ? 'Done' : 'Next'}.`;
         }
         return false;
       }
       g.el = el;
-      const rect = el.getBoundingClientRect();
+      // clicks inside an iframe never reach the top document, so listen there too
+      const doc = el.ownerDocument;
+      if (!g.docs.has(doc)) { g.docs.add(doc); doc.addEventListener('pointerdown', onGuidePointer, true); }
+      const rect = topRect(el);
       if (rect.top < 0 || rect.bottom > innerHeight) el.scrollIntoView({ block: 'center', inline: 'nearest' });
       root.querySelector('.pg-g-status').textContent = 'Click the highlighted control.';
       let lastLookup = 0;
@@ -689,12 +722,12 @@
           if (Date.now() - lastLookup > 300) { lastLookup = Date.now(); g.el = findGuideTarget(step.target) || g.el; }
           if (!g.el.isConnected || isHidden(g.el)) return null;
         }
-        const r = g.el.getBoundingClientRect();
+        const r = topRect(g.el);
         return r.width ? { r, first: r } : null;
       }, i + 1, '', { sign: `Step ${i + 1} of ${total}`, persist: true });
       return true;
     };
-    if (!attach()) g.poll = setInterval(() => { if (attach()) clearInterval(g.poll); }, 300);
+    if (!attach()) g.poll = setInterval(() => { if (attach()) clearInterval(g.poll); }, 400);
   }
 
   // The overlay never intercepts clicks. When the user clicks the highlighted
