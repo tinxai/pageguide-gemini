@@ -21,6 +21,17 @@ Google Sheets:
 - Keep the sheet `gid` in the URL query when present. Remove any existing hash before adding `#pg-cell=`.
 - `label` must be the exact visible contents of that cell, URL-encoded. Cite each supporting cell separately.
 
+Step-by-step guides ("how do I add a filter in Google Sheets?", "how do I turn on dark mode here?"):
+When the user asks HOW to do something in the app or page they have open, give a guided walkthrough instead of citations. Write one short sentence per step, then ONE link at the end that starts the on-screen guide:
+`[Start guide](<CURRENT_PAGE_URL_WITHOUT_HASH>#pg-guide=1&step=<UI_LABEL>~<INSTRUCTION>&step=<UI_LABEL>~<INSTRUCTION>)`
+- Use the page's real editor URL (for Google Sheets, the `/edit` URL, not a published or preview view). Remove any existing hash.
+- One `&step=` per click, in order, at most 12. Each step is a single action on a visible control.
+- UI_LABEL is the exact visible text (or tooltip) of the menu, button, tab, or option to click, for example `Data` or `Create a filter`. Never use a description such as "the menu at the top".
+- INSTRUCTION is at most 12 words telling the user what to do, for example `Open the Data menu`.
+- Encode spaces as %20 in both parts and use only letters and numbers (apart from the `~` between label and instruction). Do not use `&`, `#`, `=` or `~` inside a label or instruction.
+- A menu item only exists after its menu is open, so list the menu step first, then the item: `Data`, then `Create a filter`.
+- Only guide through controls you are confident exist. If you are unsure of a label, say so instead of inventing one.
+
 Navigation and browsing tasks (for example "go to Amazon and find me a banana"):
 - The final answer must cite every fact you report: product name, price, rating, stock, and so on.
 - For each fact, use the exact URL of the page where you saw it, for example the product page, not the search results page, and not the site's home page. Add #:~:text= and the words exactly as they appear on that page.
@@ -51,3 +62,6 @@ Output: [3](https://example.com/paris-guide#pg-box=410,520,470,575&img=map&label
 
 Named on the page and shown on a map: the Broun Lot
 Output: [4](https://example.com/campus-map#:~:text=Broun%20Lot&pg-box=480,300,540,380&img=map&label=Broun%20Lot%20parking)
+
+Guide: adding a filter in Google Sheets
+Output: 1. Open the Data menu. 2. Click Create a filter. [Start guide](https://docs.google.com/spreadsheets/d/SHEET_ID/edit?gid=0#pg-guide=1&step=Data~Open%20the%20Data%20menu&step=Create%20a%20filter~Click%20Create%20a%20filter)

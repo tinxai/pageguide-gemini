@@ -56,6 +56,18 @@ Gemini needs to format its citations in a way the extension can read. The format
 
 For things that aren't text (an object in a photo, a spot on a map, a region of a chart), the skill makes Gemini give a box instead of a quote. The extension finds the image, map, or canvas on the page, scrolls to it, and draws the box, arrow, and a short label over it. This works best for images and charts. On maps and canvases the box is only right if you haven't panned or zoomed since Gemini looked.
 
+## What it can do
+
+| Ability | What you get | Works on | Needs in Gemini's answer |
+| --- | --- | --- | --- |
+| Jump to the open tab | Switches to the tab you already have instead of opening a duplicate | Any `http(s)` page, Google Docs/Sheets/Slides | Any citation link |
+| Text evidence | Scrolls to and highlights the cited quote, with an arrow and "Evidence N" sign | Webpages, shadow-DOM pages, Google Docs/Slides (readable view) | `#:~:text=` link |
+| PDF evidence | Chrome highlights the quote in the already-open PDF tab | PDFs, arXiv PDFs | `#:~:text=` link |
+| Google Sheets cells | Highlights an exact cell by A1 address and checks its value | Google Sheets (readable view) | `#pg-cell=` link |
+| Visual evidence | Draws a labelled box and arrow on an image, chart, map, canvas or video frame | Pages with images, maps, charts | `#pg-box=` link |
+| Step-by-step guide | Walks through up to 12 UI controls with arrows, a step card, Previous/Next and click-to-advance | Live web apps, such as the Google Sheets editor | `#pg-guide=` link |
+| Fails safely | Shows a notice or the plain instruction instead of pointing at a wrong spot | All of the above | n/a |
+
 ## Use cases
 
 ### 1. Find evidence on the page you are reading
@@ -70,6 +82,12 @@ Give Gemini a browsing task, such as "scroll down and find the photo of Harry Ka
 
 ![Navigate and draw: a citation draws a labelled box on the photo](docs/usecase-navigate-image.png)
 
+### 3. Get a step-by-step guide
+
+Ask Gemini how to do something in the app you have open, such as "how do I add a filter in Google Sheets?". It answers with the steps and a **Start guide** link. Click it and PageGuide walks you through the task on the live page: a box and arrow point at the Data menu, then at **Create a filter**, with a **Step N of M** card and **Previous** / **Next** controls.
+
+![Step-by-step guide: arrows lead through Data, then Create a filter in Google Sheets](docs/usecase-step-by-step.gif)
+
 ## Notes
 
 - **Webpages:** the extension highlights the quote itself; clicking another citation replaces the previous highlight. It also draws a pulsing box, a bobbing arrow and an "Evidence N" sign on the quote, which fade out after a few seconds.
@@ -77,9 +95,16 @@ Give Gemini a browsing task, such as "scroll down and find the photo of Harry Ka
 - **PDFs:** Chrome's PDF viewer blocks extension scripts, so Chrome highlights the quote itself. Each click opens the PDF fresh and closes the old tab, so only the latest quote is highlighted.
 - If a quote isn't highlighted, the words in the citation probably don't match the page text exactly. Pages where text is drawn as an image can't be highlighted.
 
-## Next step: step-by-step highlighting
+## Step-by-step guides
 
-Add an annotation mode that presents multiple evidence targets as an ordered walkthrough. PageGuide will highlight one target at a time, label it as **Step N of M**, and provide **Previous** and **Next** controls. Each step will continue to use its precise target—text, a Google Sheets A1 cell address, or a visual box—and will fail safely when that target cannot be verified.
+Ask Gemini how to do something in the app you have open, such as "how do I add a filter in Google Sheets?". With the skill enabled, it answers with a **Start guide** link. Click it and PageGuide switches to your open tab (the live editor, not a read-only view) and walks you through the task one control at a time:
+
+- a pulsing box, bobbing arrow and **Step N of M** sign point at the exact menu, button or option to use;
+- a card shows the instruction with **Previous** and **Next** controls (**Done** on the last step) and a close button;
+- the overlay never blocks clicks. You do the action yourself, and clicking the highlighted control moves to the next step once the page reacts (for example when a menu opens);
+- if a control can't be found on screen, PageGuide doesn't guess. It shows the instruction and leaves the arrow off, and you can continue with **Next**.
+
+The link format, `#pg-guide=1&step=<UI label>~<instruction>`, is described in [`GEMINI_SKILL.md`](GEMINI_SKILL.md). Controls are matched by their visible text, tooltip or `aria-label`, so the label Gemini gives must match what the page shows. Evidence citations (text, Sheets cells, image boxes) are unchanged.
 
 ## Author
 

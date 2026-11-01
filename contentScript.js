@@ -299,7 +299,8 @@
   }
 
   // source: a Range (text evidence) or a function returning {r, first} rects (visual evidence)
-  function annotate(source, citeId, label = '') {
+  // opts.sign: exact sign text; opts.persist: stay until replaced/cleared (guide steps)
+  function annotate(source, citeId, label = '', opts = {}) {
     clearAnnotation();
     const color = getColorForId(citeId).border;
     const NS = 'http://www.w3.org/2000/svg';
@@ -341,11 +342,13 @@
 
     const sign = document.createElement('div');
     sign.className = 'pg-sign';
-    sign.append(label ? `Evidence ${citeId}: ${label}` : `Evidence ${citeId}`);
-    const close = document.createElement('b');
-    close.textContent = '\u00d7';
-    close.addEventListener('click', clearAnnotation);
-    sign.appendChild(close);
+    sign.append(opts.sign || (label ? `Evidence ${citeId}: ${label}` : `Evidence ${citeId}`));
+    if (!opts.persist) {
+      const close = document.createElement('b');
+      close.textContent = '\u00d7';
+      close.addEventListener('click', clearAnnotation);
+      sign.appendChild(close);
+    }
 
     root.append(box, arrow, sign);
     document.documentElement.appendChild(root);
@@ -354,6 +357,8 @@
       let r, first;
       if (typeof source === 'function') {
         const m = source();
+        // target gone (e.g. a menu closed): hide the pointer rather than leave it stale
+        for (const part of [box, arrow, sign]) part.style.display = m ? '' : 'none';
         if (!m) return;
         ({ r, first } = m);
         box.style.background = 'color-mix(in srgb, var(--pg-c) 14%, transparent)';
@@ -399,10 +404,12 @@
     const state = { root, raf: 0, timer: 0 };
     const tick = () => { place(); state.raf = requestAnimationFrame(tick); };  // follow the text while it scrolls
     state.raf = requestAnimationFrame(tick);
-    state.timer = setTimeout(() => {
-      root.style.opacity = '0';
-      state.timer = setTimeout(clearAnnotation, 600);
-    }, 7000);
+    if (!opts.persist) {
+      state.timer = setTimeout(() => {
+        root.style.opacity = '0';
+        state.timer = setTimeout(clearAnnotation, 600);
+      }, 7000);
+    }
     annotation = state;
   }
 
@@ -501,6 +508,239 @@
     annotate(measure, citeId, spec.label);
   }
 
+  // ---- Step-by-step UI guide ----
+  // Link form: #pg-guide=1&step=<UI label>~<instruction>&step=...
+  // Each step points at a real control on the live page (a menu, button, tab...).
+  // The overlay is click-through, so the user performs the action themselves;
+  // clicking the highlighted control advances to the next step.
+  const GUIDE_MAX_STEPS = 12;
+  const GUIDE_INTERACTIVE = 'a, button, input, select, summary, label, li, [role="button"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="tab"], [role="option"], [role="checkbox"], [role="link"], [role="switch"], [tabindex], [aria-label], [data-tooltip], [title]';
+  let guide = null;
+
+  function parseGuideLink(href) {
+    let value = href || '';
+    if (!/[#&]pg-guide=/i.test(value)) { try { value = decodeURIComponent(value); } catch (e) {} }
+    try {
+      const params = new URLSearchParams(new URL(value, location.href).hash.replace(/^#/, ''));
+      if (!params.has('pg-guide')) return null;
+      const steps = params.getAll('step').slice(0, GUIDE_MAX_STEPS).map((s) => {
+        const cut = s.indexOf('~');
+        const target = (cut === -1 ? s : s.slice(0, cut)).trim().slice(0, 80);
+        const say = (cut === -1 ? '' : s.slice(cut + 1)).trim().slice(0, 240);
+        return { target, say };
+      }).filter(s => s.target);
+      return steps.length ? { steps } : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  const guideNorm = (s) => String(s || '').toLowerCase().replace(/[….]+\s*$/, '').replace(/\s+/g, ' ').trim();
+
+  // Rect in top-window coordinates, so controls inside same-origin iframes
+  // (many dialogs are iframes) line up with the overlay.
+  function topRect(el) {
+    const r = el.getBoundingClientRect();
+    let left = r.left, top = r.top;
+    try {
+      let win = el.ownerDocument.defaultView;
+      while (win && win !== window && win.frameElement) {
+        const f = win.frameElement.getBoundingClientRect();
+        left += f.left; top += f.top;
+        win = win.parent;
+      }
+    } catch (e) {}
+    return { left, top, width: r.width, height: r.height, right: left + r.width, bottom: top + r.height };
+  }
+
+  // Best visible control whose accessible name or text matches the label.
+  // Searches the page, open shadow roots and same-origin iframes, so popups and
+  // dialogs are found wherever they render. Returns null (never a guess) when
+  // nothing matches well enough.
+  function findGuideTarget(label) {
+    const want = guideNorm(label);
+    if (!want) return null;
+    const wordRe = new RegExp(`(^|[^\\p{L}\\p{N}])${want.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\p{L}\\p{N}])`, 'u');
+    const search = (selector, minScore, leafOnly) => {
+      let best = null, bestScore = 0, bestArea = Infinity;
+      const consider = (el) => {
+        if (el.closest('#pg-annot-root, #pg-guide-root')) return;
+        if (leafOnly && el.childElementCount > 2) return;
+        const names = [el.getAttribute('aria-label'), el.getAttribute('data-tooltip'), el.getAttribute('title'), el.getAttribute('alt')];
+        if (el.childElementCount < 6) {
+          const text = el.textContent;
+          if (text && text.length <= 120) names.push(text);
+        }
+        let score = 0;
+        for (const raw of names) {
+          const n = guideNorm(raw);
+          if (!n) continue;
+          let sc = 0;
+          if (n === want) sc = 100;
+          else if (n.startsWith(want)) sc = 70 - Math.min(25, (n.length - want.length) / 3);
+          else if (wordRe.test(n)) sc = 40 - Math.min(20, (n.length - want.length) / 4);
+          score = Math.max(score, sc);
+        }
+        if (score < minScore) return;
+        if (isHidden(el)) return;
+        const rect = topRect(el);
+        if (rect.width < 4 || rect.height < 4 || visibleArea(rect) <= 0) return;
+        const area = rect.width * rect.height;
+        if (area > innerWidth * innerHeight * 0.6) return;   // a page-sized container is never "the button"
+        if (score > bestScore || (score === bestScore && area < bestArea)) { best = el; bestScore = score; bestArea = area; }
+      };
+      (function walk(root) {
+        for (const el of root.querySelectorAll(selector)) consider(el);
+        // shadow hosts are usually plain elements, so look at every element for one
+        for (const el of root.querySelectorAll('*')) {
+          if (el.shadowRoot) walk(el.shadowRoot);
+          else if (el.tagName === 'IFRAME') { try { if (el.contentDocument) walk(el.contentDocument); } catch (e) {} }
+        }
+      })(document);
+      return best;
+    };
+    // Clickable-looking controls first; if none, any plain element whose text is an
+    // exact or leading match (dialog options are often bare divs and spans).
+    return search(GUIDE_INTERACTIVE, 30, false) || search('div, span, p, h1, h2, h3, h4, td, th', 70, true);
+  }
+
+  function ensureGuideStyle() {
+    if (document.getElementById('pg-guide-style')) return;
+    const st = document.createElement('style');
+    st.id = 'pg-guide-style';
+    st.textContent = `
+      #pg-guide-root { position: fixed; left: 50%; bottom: 72px; translate: -50% 0; z-index: 2147483647; width: min(420px, calc(100vw - 24px));
+        box-sizing: border-box; padding: 12px 14px; border-radius: 12px; background: #1f1f1f; color: #fff; border: 2px solid #e86f00;
+        box-shadow: 0 6px 22px rgba(0,0,0,.45); font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      #pg-guide-root .pg-g-head { display: flex; align-items: center; justify-content: space-between; font-weight: 700; color: #ffb066; margin-bottom: 4px; }
+      #pg-guide-root .pg-g-say { font-size: 15px; font-weight: 600; }
+      #pg-guide-root .pg-g-status { margin-top: 4px; font-size: 12.5px; color: #c9c9c9; min-height: 1em; }
+      #pg-guide-root .pg-g-nav { display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }
+      #pg-guide-root button { all: unset; cursor: pointer; padding: 6px 12px; border-radius: 8px; background: #3a3a3a; color: #fff; font-weight: 600; font-size: 13px; }
+      #pg-guide-root button:hover { background: #4a4a4a; }
+      #pg-guide-root button.pg-g-primary { background: #e86f00; }
+      #pg-guide-root button.pg-g-primary:hover { background: #ff8412; }
+      #pg-guide-root button[disabled] { opacity: .4; cursor: default; }
+      #pg-guide-root .pg-g-x { padding: 0 6px; background: none; font-size: 18px; line-height: 1; }`;
+    document.head.appendChild(st);
+  }
+
+  function endGuide() {
+    if (!guide) return;
+    clearInterval(guide.poll);
+    clearTimeout(guide.advance);
+    for (const d of guide.docs) d.removeEventListener('pointerdown', onGuidePointer, true);
+    guide.root.remove();
+    guide = null;
+    clearAnnotation();
+  }
+
+  function startGuide({ steps }) {
+    endGuide();
+    clearAnnotation();
+    if (window.CSS && CSS.highlights) CSS.highlights.delete('pg-evidence');
+    ensureGuideStyle();
+
+    const root = document.createElement('div');
+    root.id = 'pg-guide-root';
+    root.innerHTML = '<div class="pg-g-head"><span class="pg-g-step"></span><button class="pg-g-x" aria-label="Close guide">×</button></div>' +
+      '<div class="pg-g-say"></div><div class="pg-g-status"></div>' +
+      '<div class="pg-g-nav"><button class="pg-g-prev">Previous</button><button class="pg-g-next pg-g-primary">Next</button></div>';
+    document.documentElement.appendChild(root);
+    root.querySelector('.pg-g-x').addEventListener('click', endGuide);
+    root.querySelector('.pg-g-prev').addEventListener('click', () => guide && showGuideStep(guide.i - 1));
+    root.querySelector('.pg-g-next').addEventListener('click', () => guide && nextGuideStep());
+
+    guide = { steps, i: 0, root, el: null, poll: 0, advance: 0, deadline: 0, docs: new Set([document]) };
+    document.addEventListener('pointerdown', onGuidePointer, true);
+    showGuideStep(0, true);
+  }
+
+  function nextGuideStep() {
+    if (!guide) return;
+    if (guide.i >= guide.steps.length - 1) finishGuide();
+    else showGuideStep(guide.i + 1);
+  }
+
+  function finishGuide() {
+    if (!guide) return;
+    clearInterval(guide.poll);
+    clearAnnotation();
+    guide.root.querySelector('.pg-g-step').textContent = 'All done';
+    guide.root.querySelector('.pg-g-say').textContent = 'You have completed all steps.';
+    guide.root.querySelector('.pg-g-status').textContent = '';
+    guide.root.querySelector('.pg-g-nav').style.display = 'none';
+    const g = guide;
+    setTimeout(() => { if (guide === g) endGuide(); }, 2200);
+  }
+
+  function showGuideStep(i, first = false) {
+    if (!guide || i < 0 || i >= guide.steps.length) return;
+    clearInterval(guide.poll);
+    clearTimeout(guide.advance);
+    clearAnnotation();
+    const step = guide.steps[i];
+    const total = guide.steps.length;
+    guide.i = i;
+    guide.el = null;
+    // Sheets and other web apps load slowly after the tab is focused: wait longer on step 1.
+    guide.deadline = Date.now() + (first ? 15000 : 8000);
+
+    const { root } = guide;
+    root.querySelector('.pg-g-step').textContent = `Step ${i + 1} of ${total}`;
+    root.querySelector('.pg-g-say').textContent = step.say || step.target;
+    root.querySelector('.pg-g-status').textContent = `Looking for “${step.target}”…`;
+    root.querySelector('.pg-g-prev').disabled = i === 0;
+    root.querySelector('.pg-g-next').textContent = i === total - 1 ? 'Done' : 'Next';
+
+    const g = guide;
+    let warned = false;
+    const attach = () => {
+      if (guide !== g || g.i !== i) return true;
+      const el = findGuideTarget(step.target);
+      if (!el) {
+        // Keep looking after the timeout: a popup may open late, or the user may
+        // do the step by hand and the next control appear afterwards.
+        if (Date.now() > g.deadline && !warned) {
+          warned = true;
+          root.querySelector('.pg-g-status').textContent =
+            `Couldn\u2019t find \u201c${step.target}\u201d on screen. Follow the instruction above, then press ${i === total - 1 ? 'Done' : 'Next'}.`;
+        }
+        return false;
+      }
+      g.el = el;
+      // clicks inside an iframe never reach the top document, so listen there too
+      const doc = el.ownerDocument;
+      if (!g.docs.has(doc)) { g.docs.add(doc); doc.addEventListener('pointerdown', onGuidePointer, true); }
+      const rect = topRect(el);
+      if (rect.top < 0 || rect.bottom > innerHeight) el.scrollIntoView({ block: 'center', inline: 'nearest' });
+      root.querySelector('.pg-g-status').textContent = 'Click the highlighted control.';
+      let lastLookup = 0;
+      annotate(() => {
+        // controls such as menu items are re-created when a menu reopens: re-find, throttled
+        if (!g.el.isConnected || isHidden(g.el)) {
+          if (Date.now() - lastLookup > 300) { lastLookup = Date.now(); g.el = findGuideTarget(step.target) || g.el; }
+          if (!g.el.isConnected || isHidden(g.el)) return null;
+        }
+        const r = topRect(g.el);
+        return r.width ? { r, first: r } : null;
+      }, i + 1, '', { sign: `Step ${i + 1} of ${total}`, persist: true });
+      return true;
+    };
+    if (!attach()) g.poll = setInterval(() => { if (attach()) clearInterval(g.poll); }, 400);
+  }
+
+  // The overlay never intercepts clicks. When the user clicks the highlighted
+  // control themselves, move on once the page has reacted (menu opened, etc.).
+  function onGuidePointer(e) {
+    if (!guide || !guide.el) return;
+    const path = e.composedPath ? e.composedPath() : [];
+    if (path.some(n => n && n.id === 'pg-guide-root')) return;
+    if (!path.includes(guide.el)) return;
+    clearTimeout(guide.advance);
+    guide.advance = setTimeout(nextGuideStep, 350);
+  }
+
   // Google Workspace evidence is shown in a DOM-based read-only view because
   // the normal editors paint their content onto canvases. Give users an
   // explicit route back instead of relying on them to discover browser Back.
@@ -550,7 +790,12 @@
 
   chrome.runtime.onMessage.addListener((message) => {
     if (message.type === 'EXECUTE_JUMP_AND_HIGHLIGHT') {
-      const { citeId, quote, box, cell } = message.payload;
+      const { citeId, quote, box, cell, guide: guideSpec } = message.payload;
+      if (guideSpec) {
+        // Guides act on the live page's own UI, so only the top frame runs one.
+        if (window === window.top) startGuide(guideSpec);
+        return;
+      }
       // tabs.sendMessage reaches every frame. In Sheets' readable view, the
       // outer frame contains UI labels such as "Sheet1", while the nested
       // /htmlview/sheet frame contains the actual cells. Let only the content
@@ -576,7 +821,7 @@
     let decodedHref = href; try { decodedHref = decodeURIComponent(href); } catch (e) {}
     // PDFs: let Chrome open the link natively so its viewer highlights; background dedupes the tab
     if (/\.pdf($|[?#])|arxiv\.org\/pdf\//i.test(href)) return;
-    if (decodedHref.includes(':~:text=') || /pg-box=|pg-cell=/i.test(decodedHref)) {
+    if (decodedHref.includes(':~:text=') || /pg-box=|pg-cell=|pg-guide=/i.test(decodedHref)) {
       // STOP browser from opening new tab
       e.preventDefault();
       e.stopPropagation();
@@ -593,7 +838,8 @@
           citeId: citeId,
           quote: targetText,
           box: /pg-box=/i.test(decodedHref) ? decodedHref : '',
-          cell: parseCellLink(href)
+          cell: parseCellLink(href),
+          guide: parseGuideLink(href)
         }
       });
     }
